@@ -2,6 +2,10 @@
 //! at runtime through `sidebar_platform`, and system data comes from
 //! `sidebar_sysinfo`.
 
+// A GUI program on Windows, so no console window opens with it; see
+// `sidebar_platform::process` for where its messages go instead.
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 mod config_file;
 mod layout_file;
 mod runtime;
@@ -30,6 +34,8 @@ usage: sidebar [options]
   --dump <dir>       headless only: write frames as PPM files to <dir>
   --scale <n>        headless only: render at n× (e.g. 2 for screenshots)
   --settings         open the settings window at start
+  --autostart on|off
+                     start the sidebar when you log in, or stop doing so
   -h, --help         show this help
 
 Drag a widget with the primary button to move it; drop it near a screen
@@ -44,10 +50,11 @@ struct Args {
     dump: Option<PathBuf>,
     scale: Option<f32>,
     settings: bool,
+    autostart: Option<bool>,
 }
 
 fn parse_args() -> Result<Args, String> {
-    let mut args = Args { backend: None, edge: None, config: None, layout: None, ticks: None, dump: None, scale: None, settings: false };
+    let mut args = Args { backend: None, edge: None, config: None, layout: None, ticks: None, dump: None, scale: None, settings: false, autostart: None };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
         let mut value = || it.next().ok_or_else(|| format!("{arg} needs a value"));
@@ -59,6 +66,13 @@ fn parse_args() -> Result<Args, String> {
             "--ticks" => args.ticks = Some(value()?.parse().map_err(|e| format!("--ticks: {e}"))?),
             "--dump" => args.dump = Some(value()?.into()),
             "--settings" => args.settings = true,
+            "--autostart" => {
+                args.autostart = Some(match value()?.as_str() {
+                    "on" => true,
+                    "off" => false,
+                    other => return Err(format!("--autostart: expected on or off, not '{other}'")),
+                })
+            }
             "--scale" => args.scale = Some(value()?.parse().map_err(|e| format!("--scale: {e}"))?),
             "-h" | "--help" => return Err(USAGE.into()),
             other => return Err(format!("unknown argument '{other}'\n\n{USAGE}")),
@@ -180,10 +194,18 @@ fn settings_panel(
 ) -> Box<dyn Panel> {
     let file = path.as_deref().and_then(|p| ConfigFile::load(p, false).ok());
     let specs = file.as_ref().map_or_else(|| startup.to_vec(), ConfigFile::widgets);
-    let general = file.as_ref().map(ConfigFile::general).unwrap_or_default();
-    let save: settings::SaveFn = Box::new(move |general, specs| match &path {
-        Some(path) => config_file::save_settings(path, Some(general), specs),
-        None => Err("no config directory on this system".into()),
+    let mut general = file.as_ref().map(ConfigFile::general).unwrap_or_default();
+    general.start_at_login = sidebar_platform::autostart::enabled();
+    let starts_at_login = general.start_at_login;
+    let save: settings::SaveFn = Box::new(move |general, specs| {
+        match &path {
+            Some(path) => config_file::save_settings(path, Some(general), specs)?,
+            None => return Err("no config directory on this system".into()),
+        }
+        if general.start_at_login != starts_at_login {
+            sidebar_platform::autostart::set(general.start_at_login)?;
+        }
+        Ok(())
     });
     Box::new(settings::Settings::new(general, &specs, theme, Box::new(sidebar_render::SystemText), actions, save).with_unavailable(unavailable))
 }
@@ -237,6 +259,11 @@ fn restart() -> String {
 
 fn run() -> Result<Exit, String> {
     let args = parse_args()?;
+    if let Some(on) = args.autostart {
+        sidebar_platform::autostart::set(on)?;
+        println!("{}", if on { "The sidebar will start when you log in." } else { "The sidebar won't start at login any more." });
+        return Ok(Exit::Quit);
+    }
 
     let config_path = args.config.clone().or_else(|| default_path(sidebar_platform::dirs::config_dir(), "config.toml"));
     let file = match &config_path {
@@ -292,6 +319,7 @@ fn run() -> Result<Exit, String> {
 }
 
 fn main() -> ExitCode {
+    sidebar_platform::process::init_output();
     match run() {
         Ok(Exit::Quit) => ExitCode::SUCCESS,
         // Everything from the old run (windows, connection) is gone by now.

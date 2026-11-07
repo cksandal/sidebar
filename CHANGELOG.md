@@ -22,3 +22,9 @@ First public release.
   `reserve_space` and `always_on_top`.
 - Weather refreshes every 15 minutes, and soon after the computer wakes
   from sleep.
+- Start at login, from the settings window or `--autostart on|off`.
+- Docks whose widgets don't fit scroll with the mouse wheel, and stay
+  clear of the Windows taskbar.
+- Windows: no console window; messages go to the terminal it was started
+  from, or to `sidebar.log`. Tested with two monitors and display scales
+  of 100%, 125% and 150%, mixed across monitors.

@@ -5,8 +5,8 @@ use crate::geometry::Rect;
 
 /// Stacks items with the given main-axis `extents` inside `area`.
 ///
-/// Items that overflow the dock are still laid out; clipping is the
-/// renderer's job, and scrolling/overflow policy is a future concern.
+/// Items that overflow the dock are still laid out; the shell scrolls
+/// overfull docks by shifting these rects, and the renderer clips.
 pub fn stack(
     area: Rect,
     orientation: Orientation,

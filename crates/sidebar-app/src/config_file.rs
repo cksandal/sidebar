@@ -155,6 +155,9 @@ pub struct General {
     pub always_on_top: bool,
     /// `theme.opacity`, in percent.
     pub opacity: u8,
+    /// Not in the config file: the system's autostart entry (see
+    /// `sidebar_platform::autostart`), filled in and applied by the app.
+    pub start_at_login: bool,
 }
 
 impl Default for General {
@@ -165,6 +168,7 @@ impl Default for General {
             reserve_space: c.reserve_space,
             always_on_top: c.always_on_top,
             opacity: percent_of(c.theme.background.a),
+            start_at_login: false,
         }
     }
 }
@@ -353,6 +357,7 @@ impl ConfigFile {
                 (None, Some(background)) => percent_of(background.a),
                 (None, None) => d.opacity,
             },
+            start_at_login: false,
         }
     }
 
@@ -439,7 +444,7 @@ mod tests {
 
     #[test]
     fn saves_general_settings() {
-        let general = |edge, reserve_space, always_on_top| General { edge, reserve_space, always_on_top, opacity: 90 };
+        let general = |edge, reserve_space, always_on_top| General { edge, reserve_space, always_on_top, opacity: 90, start_at_login: false };
         // Defaults on a fresh file: nothing extra is written.
         let fresh = replace_settings("", Some(&General::default()), &[WidgetSpec::Clock]).unwrap();
         assert_eq!(fresh, "[[widgets]]\ntype = \"clock\"\n");

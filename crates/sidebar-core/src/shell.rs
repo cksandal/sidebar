@@ -123,7 +123,15 @@ pub struct Shell {
     drag: Option<Drag>,
     dirty: BTreeSet<SurfaceTarget>,
     layout_changed: bool,
+    /// Dock sizes the platform reported where they differ from the
+    /// monitor-long strip asked for (shortened by a taskbar or panel).
+    dock_sizes: BTreeMap<DockKey, Size>,
+    /// How far each dock is scrolled, when its widgets don't fit.
+    scroll: BTreeMap<DockKey, f32>,
 }
+
+/// How far one wheel notch scrolls an overfull dock.
+const SCROLL_STEP: f32 = 48.0;
 
 impl Shell {
     pub fn new(config: Config) -> Self {
@@ -138,6 +146,8 @@ impl Shell {
             drag: None,
             dirty: BTreeSet::new(),
             layout_changed: false,
+            dock_sizes: BTreeMap::new(),
+            scroll: BTreeMap::new(),
         }
     }
 
@@ -255,7 +265,7 @@ impl Shell {
             }
         }
         for key in docks {
-            let Some(area) = self.dock_area(key) else { continue };
+            let Some(size) = self.surface_size(SurfaceTarget::Dock(key)) else { continue };
             specs.push(SurfaceSpec {
                 target: SurfaceTarget::Dock(key),
                 monitor: key.monitor,
@@ -264,16 +274,28 @@ impl Shell {
                     thickness: self.config.thickness,
                     reserve_space: self.config.reserve_space,
                 },
-                size: area.size(),
+                size,
                 above: self.config.always_on_top,
             });
         }
         specs
     }
 
+    /// The platform gave a surface a different size than asked for. Only
+    /// docks follow it: the platform may shorten them to stay clear of a
+    /// taskbar or another panel, and their widgets are laid out to fit.
+    pub fn surface_resized(&mut self, target: SurfaceTarget, size: Size) {
+        if let SurfaceTarget::Dock(key) = target
+            && self.surface_size(target) != Some(size)
+        {
+            self.dock_sizes.insert(key, size);
+            self.dirty.insert(target);
+        }
+    }
+
     fn surface_size(&self, target: SurfaceTarget) -> Option<Size> {
         match target {
-            SurfaceTarget::Dock(key) => self.dock_area(key).map(|r| r.size()),
+            SurfaceTarget::Dock(key) => self.dock_sizes.get(&key).copied().or_else(|| self.dock_area(key).map(|r| r.size())),
             SurfaceTarget::Floating(id) => match self.entries.get(&id)?.placement {
                 Placement::Floating { rect, .. } => Some(rect.size()),
                 Placement::Docked(_) => None,
@@ -291,22 +313,85 @@ impl Shell {
             SurfaceTarget::Floating(id) | SurfaceTarget::DragPreview(id) => vec![(id, local)],
             SurfaceTarget::Panel => Vec::new(),
             SurfaceTarget::Dock(key) => {
-                let orientation = key.edge.orientation();
-                let cross = (self.config.thickness - 2.0 * self.config.padding).max(0.0);
-                let mut members: Vec<(WidgetId, &Entry)> = self
-                    .entries
-                    .iter()
-                    .filter(|(id, e)| !self.is_dragging(**id) && e.placement == Placement::Docked(key))
-                    .map(|(id, e)| (*id, e))
-                    .collect();
-                members.sort_by_key(|(_, e)| e.order);
-                let ctx = MeasureCtx { text: &*self.text, theme: &self.config.theme };
-                let extents: Vec<f32> =
-                    members.iter().map(|(_, e)| e.widget.measure(&ctx, orientation, cross)).collect();
-                let rects = layout::stack(local, orientation, &extents, self.config.padding, self.config.spacing);
-                members.into_iter().map(|(id, _)| id).zip(rects).collect()
+                let (members, extents) = self.dock_members(key);
+                let offset = self.scroll_offset(key, &extents);
+                let shift = match key.edge.orientation() {
+                    Orientation::Vertical => Point::new(0.0, -offset),
+                    Orientation::Horizontal => Point::new(-offset, 0.0),
+                };
+                let rects = layout::stack(local, key.edge.orientation(), &extents, self.config.padding, self.config.spacing);
+                members.into_iter().zip(rects.into_iter().map(|r| r.translate(shift))).collect()
             }
         }
+    }
+
+    /// The widgets in dock `key`, in order, with their lengths along it.
+    fn dock_members(&self, key: DockKey) -> (Vec<WidgetId>, Vec<f32>) {
+        let orientation = key.edge.orientation();
+        let cross = (self.config.thickness - 2.0 * self.config.padding).max(0.0);
+        let mut members: Vec<(WidgetId, &Entry)> = self
+            .entries
+            .iter()
+            .filter(|(id, e)| !self.is_dragging(**id) && e.placement == Placement::Docked(key))
+            .map(|(id, e)| (*id, e))
+            .collect();
+        members.sort_by_key(|(_, e)| e.order);
+        let ctx = MeasureCtx { text: &*self.text, theme: &self.config.theme };
+        members.into_iter().map(|(id, e)| (id, e.widget.measure(&ctx, orientation, cross))).unzip()
+    }
+
+    /// The dock's length and the length of its contents.
+    fn dock_lengths(&self, key: DockKey, extents: &[f32]) -> (f32, f32) {
+        let size = self.surface_size(SurfaceTarget::Dock(key)).unwrap_or_default();
+        let length = match key.edge.orientation() {
+            Orientation::Vertical => size.height,
+            Orientation::Horizontal => size.width,
+        };
+        let gaps = extents.len().saturating_sub(1) as f32 * self.config.spacing;
+        (length, extents.iter().sum::<f32>() + gaps + 2.0 * self.config.padding)
+    }
+
+    /// The dock's scroll position, kept within its contents (which may
+    /// have shrunk since it was scrolled).
+    fn scroll_offset(&self, key: DockKey, extents: &[f32]) -> f32 {
+        let (length, content) = self.dock_lengths(key, extents);
+        self.scroll.get(&key).copied().unwrap_or(0.0).clamp(0.0, (content - length).max(0.0))
+    }
+
+    /// Scrolls an overfull dock by `notches` wheel steps; false if it
+    /// fits and so can't scroll.
+    fn scroll_dock(&mut self, key: DockKey, notches: f32) -> bool {
+        let (_, extents) = self.dock_members(key);
+        let (length, content) = self.dock_lengths(key, &extents);
+        if content <= length {
+            return false;
+        }
+        let old = self.scroll_offset(key, &extents);
+        let new = (old + notches * SCROLL_STEP).clamp(0.0, content - length);
+        if new != old {
+            self.scroll.insert(key, new);
+            self.dirty.insert(SurfaceTarget::Dock(key));
+        }
+        true
+    }
+
+    /// A thin scroll bar along the inner side of an overfull dock.
+    fn draw_scroll_bar(&self, scene: &mut Scene, key: DockKey) {
+        let (_, extents) = self.dock_members(key);
+        let (length, content) = self.dock_lengths(key, &extents);
+        if content <= length {
+            return;
+        }
+        let offset = self.scroll_offset(key, &extents);
+        let (start, len) = (offset / content * length, (length / content * length).max(24.0));
+        let (w, side) = (3.0, 1.5);
+        let rect = match key.edge {
+            Edge::Left => Rect::new(scene.size.width - w - side, start, w, len),
+            Edge::Right => Rect::new(side, start, w, len),
+            Edge::Top => Rect::new(start, scene.size.height - w - side, len, w),
+            Edge::Bottom => Rect::new(start, side, len, w),
+        };
+        scene.fill_rect(rect, self.config.theme.foreground.with_alpha(90), w / 2.0);
     }
 
     pub fn render(&self, target: SurfaceTarget) -> Option<Scene> {
@@ -316,6 +401,9 @@ impl Shell {
         for (id, bounds) in self.layout(target) {
             let Some(entry) = self.entries.get(&id) else { continue };
             entry.widget.draw(&mut DrawCtx { scene: &mut scene, bounds, theme, text: &*self.text });
+        }
+        if let SurfaceTarget::Dock(key) = target {
+            self.draw_scroll_bar(&mut scene, key);
         }
         if let SurfaceTarget::Floating(id) = target
             && self.is_dragging(id)
@@ -390,6 +478,14 @@ impl Shell {
                     if self.begin_drag(press.id, press.at) {
                         self.drag_to(g);
                     }
+                    return;
+                }
+            }
+            // The wheel scrolls a dock whose widgets don't fit.
+            InputEvent::Scroll { dx, dy, .. } => {
+                if let SurfaceTarget::Dock(key) = target
+                    && self.scroll_dock(key, if dy != 0.0 { dy } else { dx })
+                {
                     return;
                 }
             }
@@ -684,6 +780,35 @@ mod tests {
         // Kept on screen: it was near the bottom edge.
         assert!(grown.bottom() <= 1080.0 && grown.x == rect.x);
         assert!(shell.take_layout_changed());
+    }
+
+    #[test]
+    fn overfull_docks_scroll_and_follow_their_reported_size() {
+        let mut shell = shell(true);
+        let ids: Vec<WidgetId> = (0..30).map(|_| shell.add_widget(Box::new(Block), None)).collect();
+        let Some(Placement::Docked(key)) = shell.placement(ids[0]) else { panic!("not docked") };
+        let target = SurfaceTarget::Dock(key);
+        // A taskbar shortens the dock: 30 blocks need 30*40 + 29*6 + 2*6 = 1386px.
+        let size = Size::new(160.0, 1032.0);
+        shell.surface_resized(target, size);
+        assert_eq!(shell.surfaces().iter().find(|s| s.target == target).map(|s| s.size), Some(size));
+        let last = |shell: &Shell| shell.layout(target).last().map(|(_, r)| r.bottom());
+        assert_eq!(last(&shell), Some(1380.0));
+
+        let wheel = |shell: &mut Shell, dy| shell.handle_input(target, &InputEvent::Scroll { pos: Point::new(80.0, 500.0), dx: 0.0, dy }, None);
+        wheel(&mut shell, 100.0);
+        // Scrolled to the end, and no further.
+        assert_eq!(last(&shell), Some(1032.0 - 6.0));
+        assert!(shell.take_dirty().contains(&target));
+        assert!(shell.render(target).is_some());
+        wheel(&mut shell, -100.0);
+        assert_eq!(shell.layout(target)[0].1.y, 6.0);
+
+        // A dock that fits doesn't scroll.
+        let mut small = self::shell(true);
+        let id = small.add_widget(Box::new(Block), None);
+        let Some(Placement::Docked(key)) = small.placement(id) else { panic!("not docked") };
+        assert!(!small.scroll_dock(key, 3.0));
     }
 
     fn drag(shell: &mut Shell, id: WidgetId, to: Point) -> Placement {

@@ -49,9 +49,10 @@ it.
 
 On Windows, the same commands work in a terminal once Rust is installed
 with rustup's default (MSVC) toolchain, which needs the Visual Studio C++
-Build Tools. Run `sidebar.exe` from a terminal, because for now it keeps a
-console window open. Building a Windows binary on Linux is described in
-[CONTRIBUTING.md](CONTRIBUTING.md#windows).
+Build Tools. `sidebar.exe` opens no console window. Started from a
+terminal it prints its messages there; otherwise it writes them to
+`%LOCALAPPDATA%\sidebar\sidebar.log`. Building a Windows binary on Linux is
+described in [CONTRIBUTING.md](CONTRIBUTING.md#windows).
 
 Optional extras:
 
@@ -64,16 +65,16 @@ Optional extras:
 
 ### Start at login
 
-Most Linux desktops start programs listed in `~/.config/autostart`. Copy the
-included entry there and point it at the installed binary:
+Turn on **Start at login** in the settings window, or run:
 
 ```sh
-mkdir -p ~/.config/autostart
-sed "s|^Exec=.*|Exec=$HOME/.cargo/bin/sidebar|" packaging/sidebar.desktop > ~/.config/autostart/sidebar.desktop
+sidebar --autostart on     # and --autostart off to undo it
 ```
 
-On Windows, press Win+R, enter `shell:startup`, and put a shortcut to
-`sidebar.exe` in the folder that opens.
+On Linux this writes `~/.config/autostart/sidebar.desktop`, which most
+desktops follow; on Windows it adds the sidebar to your startup apps (the
+`Run` key under `HKEY_CURRENT_USER`). Either way it starts the binary you
+ran the command with, so run it again if you move or reinstall it.
 
 ## Using it
 
@@ -85,6 +86,9 @@ On Windows, press Win+R, enter `shell:startup`, and put a shortcut to
 - **⟳ (left of the clock):** reloads. The sidebar restarts and re-reads its
   configuration.
 - **⚙ (right of the clock):** opens the settings window.
+- **Scroll:** when a dock's widgets don't fit on the screen (more widgets,
+  or a larger display scale), use the mouse wheel over it. A thin bar on
+  its inner side shows where you are.
 - **Calendar:** click ‹ or › to change month, and click the month name to
   return to today.
 - **CPU widget:** on CPUs with performance and efficiency cores, click
@@ -96,7 +100,8 @@ On Windows, press Win+R, enter `shell:startup`, and put a shortcut to
 
 - **General:** whether the sidebar reserves its screen edge (maximized
   windows stop at it), whether it stays on top of other windows, the edge
-  new widgets dock to, and the background opacity. Settings your desktop
+  new widgets dock to, the background opacity, and whether it starts when
+  you log in. Settings your desktop
   can't apply are grayed out, with the reason: reserving space under
   XWayland, and opacity on X11 without a compositor.
 - **Widget list:**
@@ -172,10 +177,11 @@ them.
 
 ```
 sidebar [--backend auto|x11|wayland|windows|headless] [--edge left|right|top|bottom]
-        [--config FILE] [--layout FILE] [--settings]
+        [--config FILE] [--layout FILE] [--settings] [--autostart on|off]
 ```
 
-`--settings` opens the settings window at start. `sidebar --help` lists all
+`--settings` opens the settings window at start, and `--autostart` turns
+starting at login on or off and exits. `sidebar --help` lists all
 options, including the ones for testing.
 
 ## Privacy
@@ -211,8 +217,9 @@ system APIs on Windows, and the NVIDIA driver library.
   in `"Springfield, Illinois"` or `"Paris, France"`, or use coordinates.
 - **Stocks show "offline".** Yahoo occasionally rejects requests. The widget
   retries every minute and keeps the last prices it had.
-- **Something else.** Run `sidebar` from a terminal to see its messages, and
-  please [open an issue](../../issues).
+- **Something else.** Run `sidebar` from a terminal to see its messages (on
+  Windows they are also in `%LOCALAPPDATA%\sidebar\sidebar.log` when it
+  wasn't started from one), and please [open an issue](../../issues).
 
 ## Contributing
 
@@ -223,7 +230,7 @@ together.
 
 ## Roadmap
 
-- Windows: no console window, start at login, prebuilt binaries.
+- Prebuilt Windows binaries.
 - AMD and Intel GPUs; disk and audio widgets.
 - Settings window and floating widgets on Wayland.
 - HiDPI scaling on X11; fractional scaling on Wayland.

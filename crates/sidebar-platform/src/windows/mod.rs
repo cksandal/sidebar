@@ -20,7 +20,7 @@ mod wndproc;
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use sidebar_core::{Edge, InputEvent, MonitorInfo, Point, Scene, SurfaceKind, SurfaceSpec, SurfaceTarget, snap};
+use sidebar_core::{Edge, InputEvent, MonitorInfo, Point, Scene, Size, SurfaceKind, SurfaceSpec, SurfaceTarget, snap};
 use sidebar_render::AlphaMode;
 use windows_sys::Win32::Foundation::{HWND, POINT, RECT, SIZE};
 use windows_sys::Win32::Graphics::Gdi::{
@@ -65,6 +65,9 @@ pub struct WindowsPlatform {
     listener: HWND,
     /// SIDEBAR_TRACE=1: log every message the window procedure records.
     trace: bool,
+    /// Events raised outside the window procedure (docks fitted to the
+    /// taskbar), delivered with the next poll.
+    pending: Vec<PlatformEvent>,
 }
 
 struct Surface {
@@ -147,7 +150,7 @@ impl WindowsPlatform {
         }
         let listener = create_window(WS_EX_TOOLWINDOW, WS_POPUP, "sidebar", (0, 0, 0, 0))?;
         let trace = std::env::var_os("SIDEBAR_TRACE").is_some_and(|v| v == "1");
-        Ok(Self { monitors, surfaces: BTreeMap::new(), listener, trace })
+        Ok(Self { monitors, surfaces: BTreeMap::new(), listener, trace, pending: Vec::new() })
     }
 
     fn monitor(&self, spec: &SurfaceSpec) -> &Monitor {
@@ -183,14 +186,15 @@ impl WindowsPlatform {
     /// reserves (or releases) its screen space.
     fn apply(&mut self, id: SurfaceId) {
         let Some(s) = self.surfaces.get(&id) else { return };
-        let (mut x, mut y, w, h) = self.placement(&s.spec);
+        let (mut x, mut y, mut w, mut h) = self.placement(&s.spec);
         let hwnd = s.hwnd;
         let window = !s.layered();
         let reserve = match s.spec.kind {
             SurfaceKind::Dock { edge, reserve_space: true, .. } => Some(edge),
             _ => None,
         };
-        let bounds = self.monitor(&s.spec).bounds;
+        let monitor = self.monitor(&s.spec);
+        let (bounds, work, scale) = (monitor.bounds, monitor.work, monitor.scale);
         let (mut registered, mut reserved) = (s.appbar, s.reserved);
         match reserve {
             Some(edge) => {
@@ -205,11 +209,10 @@ impl WindowsPlatform {
                         appbar::set(hwnd, edge, rc);
                         reserved = Some((edge, rc));
                     }
-                    // Across the dock, stay clear of the taskbar; along it,
-                    // keep the full length the scene was laid out for.
+                    // Stay clear of the taskbar, across the dock and along it.
                     match edge {
-                        Edge::Left | Edge::Right => x = rc.left,
-                        Edge::Top | Edge::Bottom => y = rc.top,
+                        Edge::Left | Edge::Right => (x, y, h) = (rc.left, rc.top, rc.bottom - rc.top),
+                        Edge::Top | Edge::Bottom => (x, y, w) = (rc.left, rc.top, rc.right - rc.left),
                     }
                 }
             }
@@ -220,7 +223,22 @@ impl WindowsPlatform {
             }
             None => {}
         }
+        // Without reserved space, still keep the dock's ends clear of the
+        // taskbar, so nothing is drawn underneath it.
+        if let (SurfaceKind::Dock { edge, .. }, None) = (&self.surfaces[&id].spec.kind, reserved) {
+            let (l, t, r, b) = work;
+            match edge {
+                Edge::Left | Edge::Right => (y, h) = (t, b - t),
+                Edge::Top | Edge::Bottom => (x, w) = (l, r - l),
+            }
+        }
         let Some(s) = self.surfaces.get_mut(&id) else { return };
+        if matches!(s.spec.kind, SurfaceKind::Dock { .. }) {
+            let size = Size::new(w as f32 / scale, h as f32 / scale);
+            if (size.width - s.spec.size.width).abs() > 0.5 || (size.height - s.spec.size.height).abs() > 0.5 {
+                self.pending.push(PlatformEvent::SurfaceResized { surface: id, size });
+            }
+        }
         s.appbar = registered;
         s.reserved = reserved;
         s.origin = Some((x, y));
@@ -483,14 +501,14 @@ impl Platform for WindowsPlatform {
     fn poll_events(&mut self, timeout: Duration) -> Vec<PlatformEvent> {
         self.pump();
         let mut raw = wndproc::take_events();
-        if raw.is_empty() {
+        if raw.is_empty() && self.pending.is_empty() {
             let ms = timeout.as_millis().min(u32::MAX as u128 - 1) as u32;
             // SAFETY: no handles; wakes on any input or the timeout.
             unsafe { MsgWaitForMultipleObjectsEx(0, std::ptr::null(), ms, QS_ALLINPUT, MWMO_INPUTAVAILABLE) };
             self.pump();
             raw = wndproc::take_events();
         }
-        let mut out = Vec::new();
+        let mut out = std::mem::take(&mut self.pending);
         for r in raw {
             if self.trace {
                 eprintln!("[windows] {r:?}");

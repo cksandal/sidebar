@@ -63,11 +63,14 @@ scripts/win.sh stop
 scripts/win.sh frames        # headless frames rendered in the VM, as PNG
 scripts/win.sh shot          # screenshot of the VM screen (VirtualBox)
 scripts/win.sh input 'drag 1560 70 800 500'   # synthetic mouse input
+scripts/win.sh input 'monitors; dpi 1'        # list monitors; scale to 125%
 ```
 
 Programs started over SSH have no desktop, so `run`, `stop` and `input` go
 through scheduled tasks that run in the logged-in user's session. Don't use
-`input` while someone is working in the VM.
+`input` while someone is working in the VM, and set `dpi 0` again when
+you're done. [`scripts/win-input.rs`](scripts/win-input.rs) lists all the
+`input` commands.
 
 On Windows itself, `cargo build` and `cargo test --workspace` work as on
 Linux.

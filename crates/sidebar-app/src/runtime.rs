@@ -180,10 +180,12 @@ impl Runtime {
                 self.close_panel();
             }
             PlatformEvent::MonitorsChanged => self.shell.set_monitors(self.platform.monitors()),
-            PlatformEvent::SurfaceResized { surface, .. } => {
-                // Layout still follows the shell's model; just redraw so the
+            PlatformEvent::SurfaceResized { surface, size } => {
+                // Docks are laid out at the size they were given (a taskbar
+                // may shorten them); anything else just redraws, so the
                 // backend can fit the frame to the new size.
                 if let Some(&target) = self.targets.get(&surface) {
+                    self.shell.surface_resized(target, size);
                     self.redraw.insert(target);
                 }
             }

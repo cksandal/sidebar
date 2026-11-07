@@ -22,6 +22,8 @@ crates/
       wndproc.rs        window procedure: input, keyboard, stacking, display changes
       appbar.rs         reserving screen space as an AppBar (SHAppBarMessage)
     dirs.rs           per-user config and state directories
+    autostart.rs      starting at login (XDG autostart entry, or the Run registry key)
+    process.rs        where messages go on Windows (parent console or sidebar.log)
   sidebar-sysinfo   per-OS data sources (CPU, memory, GPU, network, battery, time zone)
     linux.rs          /proc, /sys (hwmon, thermal, power_supply), localtime_r
     net_linux.rs      /proc/net, getifaddrs, `iw` for Wi-Fi details
@@ -94,6 +96,15 @@ with the same `Scene` API as the widgets. Saving rewrites only the
 `[[widgets]]` tables and the General settings it shows, with `toml_edit`,
 keeping the rest of the file and its comments. A General setting is only
 written when it is already in the file or differs from the default.
+
+### Docks that don't fit
+
+A dock is as long as its monitor edge unless the platform reports a
+shorter surface (`PlatformEvent::SurfaceResized`): the Windows backend
+keeps docks clear of the taskbar, and layer-shell compositors shorten them
+for their own panels. The shell then lays the dock out at that size. When
+its widgets are longer than the dock, the mouse wheel scrolls it and a thin
+bar is drawn along its inner side.
 
 ### Dragging
 

@@ -13,7 +13,7 @@ use crate::config_file::{General, TemperatureUnit, WeekStart, WidgetSpec};
 use crate::runtime::{Action, Panel};
 
 const WIDTH: f32 = 520.0;
-const HEIGHT: f32 = 450.0;
+const HEIGHT: f32 = 530.0;
 const PAD: f32 = 16.0;
 const LIST_W: f32 = 180.0;
 const ROW_H: f32 = 26.0;
@@ -42,7 +42,7 @@ const EDGES: [Edge; 4] = [Edge::Left, Edge::Right, Edge::Top, Edge::Bottom];
 /// index.
 const OPACITIES: [u8; 5] = [60, 70, 80, 90, 100];
 
-fn general_rows(g: &General) -> [(&'static str, &'static str, &'static [&'static str], usize); 4] {
+fn general_rows(g: &General) -> [(&'static str, &'static str, &'static [&'static str], usize); 5] {
     // The nearest step, for opacities set by hand in the config file.
     let opacity = (0..OPACITIES.len()).min_by_key(|&i| OPACITIES[i].abs_diff(g.opacity)).unwrap_or(3);
     [
@@ -60,6 +60,7 @@ fn general_rows(g: &General) -> [(&'static str, &'static str, &'static [&'static
             EDGES.iter().position(|e| *e == g.edge).unwrap_or(1),
         ),
         ("Opacity", "How solid the sidebar's background is; text stays solid.", &["60%", "70%", "80%", "90%", "100%"], opacity),
+        ("Start at login", "Start the sidebar when you log in to this computer.", &["Off", "On"], g.start_at_login.into()),
     ]
 }
 
@@ -319,7 +320,8 @@ impl Settings {
                 0 => g.reserve_space = option == 0,
                 1 => g.always_on_top = option == 1,
                 2 => g.edge = EDGES.get(option).copied().unwrap_or(g.edge),
-                _ => g.opacity = OPACITIES.get(option).copied().unwrap_or(g.opacity),
+                3 => g.opacity = OPACITIES.get(option).copied().unwrap_or(g.opacity),
+                _ => g.start_at_login = option == 1,
             }
             return;
         }
@@ -875,6 +877,7 @@ mod tests {
         click(&mut s, |h| *h == Hit::Choice(1, 1));
         click(&mut s, |h| *h == Hit::Choice(2, 0));
         click(&mut s, |h| *h == Hit::Choice(3, 4));
+        click(&mut s, |h| *h == Hit::Choice(4, 1));
         // Widget-only actions do nothing here.
         s.input(&InputEvent::Key(Key::Char(' ')));
         click(&mut s, |h| *h == Hit::Copy);
@@ -883,7 +886,7 @@ mod tests {
         assert!(!s.on_general && s.selected == 0);
         click(&mut s, |h| *h == Hit::General);
         click(&mut s, |h| *h == Hit::Save);
-        assert_eq!(*general.borrow(), Some(General { edge: Edge::Left, reserve_space: false, always_on_top: true, opacity: 100 }));
+        assert_eq!(*general.borrow(), Some(General { edge: Edge::Left, reserve_space: false, always_on_top: true, opacity: 100, start_at_login: true }));
         assert_eq!(rx.try_recv(), Ok(Action::Reload));
     }
 

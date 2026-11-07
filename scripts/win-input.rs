@@ -16,6 +16,10 @@
 //!   drag X1 Y1 X2 Y2 | glide X1 Y1 X2 Y2 | wheel N | wait MS | where
 //!   type TEXT | key NAME (enter, esc, tab, backtab, backspace, delete,
 //!   left, right, up, down, home, end)
+//!   monitors (log each monitor's bounds, work area and DPI)
+//!   dpi N (primary monitor's scale, in steps from the recommended one:
+//!   0 = recommended, 1 = one step up, e.g. 100% -> 125%; undocumented
+//!   SPI_SETLOGICALDPIOVERRIDE, as used by display-scaling tools)
 
 use std::ffi::c_void;
 use std::thread::sleep;
@@ -99,6 +103,49 @@ fn press_key(name: &str) -> Result<(), String> {
     }
     pause(30);
     Ok(())
+}
+
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+struct Rect {
+    left: i32,
+    top: i32,
+    right: i32,
+    bottom: i32,
+}
+
+#[repr(C)]
+struct MonitorInfo {
+    size: u32,
+    monitor: Rect,
+    work: Rect,
+    flags: u32,
+    device: [u16; 32],
+}
+
+#[link(name = "user32")]
+unsafe extern "system" {
+    fn EnumDisplayMonitors(dc: *mut c_void, clip: *const Rect, proc_: extern "system" fn(*mut c_void, *mut c_void, *mut Rect, isize) -> i32, data: isize) -> i32;
+    fn GetMonitorInfoW(monitor: *mut c_void, info: *mut MonitorInfo) -> i32;
+    fn SystemParametersInfoW(action: u32, param: u32, pv: *mut c_void, flags: u32) -> i32;
+}
+
+#[link(name = "shcore")]
+unsafe extern "system" {
+    fn GetDpiForMonitor(monitor: *mut c_void, kind: u32, x: *mut u32, y: *mut u32) -> i32;
+}
+
+extern "system" fn each_monitor(monitor: *mut c_void, _dc: *mut c_void, _rect: *mut Rect, _data: isize) -> i32 {
+    let mut info = MonitorInfo { size: size_of::<MonitorInfo>() as u32, monitor: Rect::default(), work: Rect::default(), flags: 0, device: [0; 32] };
+    let (mut dx, mut dy) = (0, 0);
+    unsafe {
+        GetMonitorInfoW(monitor, &mut info);
+        GetDpiForMonitor(monitor, 0, &mut dx, &mut dy);
+    }
+    let name = String::from_utf16_lossy(&info.device[..info.device.iter().position(|&c| c == 0).unwrap_or(32)]);
+    let r = |r: Rect| format!("{},{} {}x{}", r.left, r.top, r.right - r.left, r.bottom - r.top);
+    log(&format!("{name}: {} work {} dpi {dx} ({}%){}", r(info.monitor), r(info.work), dx * 100 / 96, if info.flags & 1 != 0 { " primary" } else { "" }));
+    1
 }
 
 #[link(name = "kernel32")]
@@ -187,6 +234,16 @@ fn run(cmd: &str) -> Result<(), String> {
             unsafe { GetCursorPos(&mut p) };
             let window = unsafe { WindowFromPoint(Point { x: p.x, y: p.y }) };
             log(&format!("cursor at {},{}; window {window:?}", p.x, p.y));
+        }
+        "monitors" => unsafe {
+            EnumDisplayMonitors(std::ptr::null_mut(), std::ptr::null(), each_monitor, 0);
+        },
+        "dpi" => {
+            // SPI_SETLOGICALDPIOVERRIDE with SPIF_UPDATEINIFILE | SPIF_SENDCHANGE.
+            if unsafe { SystemParametersInfoW(0x009F, n(0)? as u32, std::ptr::null_mut(), 3) } == 0 {
+                return Err(format!("dpi: failed, error {}", unsafe { GetLastError() }));
+            }
+            pause(1500);
         }
         _ => return Err(format!("unknown command {name:?}")),
     }

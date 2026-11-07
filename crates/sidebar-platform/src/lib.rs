@@ -14,10 +14,12 @@ use std::time::Duration;
 
 use sidebar_core::{InputEvent, MonitorInfo, Point, Scene, Size, SurfaceSpec};
 
+pub mod autostart;
 pub mod dirs;
 pub mod headless;
 #[cfg(target_os = "linux")]
 pub mod linux;
+pub mod process;
 #[cfg(windows)]
 pub mod windows;
 
