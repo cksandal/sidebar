@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Sidebar
+Comment=Desktop sidebar with system and information widgets
+# Replace with the full path to the installed binary,
+# e.g. /home/you/.cargo/bin/sidebar
+Exec=sidebar
+Icon=utilities-system-monitor
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=3

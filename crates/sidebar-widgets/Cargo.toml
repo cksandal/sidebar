@@ -1,0 +1,11 @@
+[package]
+name = "sidebar-widgets"
+description = "Built-in widgets. Depend only on sidebar-core."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+sidebar-core.workspace = true

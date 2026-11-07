@@ -1,0 +1,13 @@
+[package]
+name = "sidebar-render"
+description = "Software rasterizer: turns a sidebar-core Scene into an RGBA pixel buffer any backend can blit."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# Pure Rust, no OS-specific code. cosmic-text locates system fonts itself.
+[dependencies]
+cosmic-text = "0.17.0"
+sidebar-core.workspace = true

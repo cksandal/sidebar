@@ -1,0 +1,40 @@
+[package]
+name = "sidebar-platform"
+description = "The Platform trait and its backends (headless, Linux Wayland/X11, Windows)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["wayland", "x11"]
+# Linux backends; each pulls in its own protocol crate, so either can be
+# compiled out (e.g. `--no-default-features --features x11`).
+wayland = ["dep:smithay-client-toolkit", "dep:libc"]
+x11 = ["dep:x11rb", "dep:libc"]
+
+[dependencies]
+sidebar-core.workspace = true
+sidebar-render.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Pure-Rust X11 protocol implementation (no Xlib/xcb C libraries needed).
+x11rb = { version = "0.14", optional = true, features = ["randr"] }
+# poll(2) on the X connection fd so the event loop can wait with a timeout.
+libc = { version = "0.2", optional = true }
+
+# Wayland client toolkit: registry, outputs, seat, shm pools, wlr-layer-shell.
+smithay-client-toolkit = { version = "0.21", optional = true, default-features = false }
+
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.61"
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+]

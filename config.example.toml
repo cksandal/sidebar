@@ -1,0 +1,76 @@
+# Example sidebar configuration. Copy to ~/.config/sidebar/config.toml
+# (Windows: %APPDATA%\sidebar\config.toml) and edit. Every setting is
+# optional; the values below are the defaults.
+
+# auto | wayland | x11 | headless   (--backend overrides this)
+backend = "auto"
+
+# Keep docks and floating widgets above other windows. Off by default: the
+# sidebar then sits below ordinary windows (above the desktop), so windows
+# can cover it. A widget being dragged is always shown on top.
+always_on_top = false
+
+[dock]
+edge = "right"         # left | right | top | bottom: where new widgets go
+thickness = 160        # dock width (left/right) or height (top/bottom), logical px
+padding = 6
+spacing = 6
+reserve_space = true   # keep maximized windows out of the dock area
+
+[drag]
+snap_threshold = 32    # drop within this many px of an edge to dock there
+allow_floating = true  # otherwise widgets dropped mid-screen snap to the nearest edge
+
+[theme]                # "#rrggbb" or "#rrggbbaa"
+background = "#181a20e6"
+foreground = "#dcdfe4"
+accent = "#61afef"
+opacity = 90           # background opacity in percent (0 = clear, 100 = solid); text stays solid
+
+# Widgets, top to bottom (left to right on horizontal docks) until you drag
+# them somewhere else; placements are then remembered in
+# ~/.local/state/sidebar/layout.toml. Without any [[widgets]] the default
+# set is clock, cpu, gpu, network, battery (gpu and battery are skipped when the
+# machine has none; gpu currently means NVIDIA, read through the driver's
+# NVML library).
+
+[[widgets]]
+type = "clock"
+
+# A month grid with ISO week numbers. Click ‹ › to page through months
+# and the month name to come back. Not in the default set.
+# [[widgets]]
+# type = "calendar"
+# week_start = "monday"          # default: sunday
+
+[[widgets]]
+type = "cpu"
+
+[[widgets]]
+type = "gpu"
+# index = 1   # second GPU
+
+[[widgets]]
+type = "network"
+# interface = "enp4s0"   # default: whichever has the default route
+
+# Weather from Open-Meteo (free, no key). Not in the default set: it needs
+# a location, and the location is sent to open-meteo.com.
+# [[widgets]]
+# type = "weather"
+# location = "New York"          # or "Springfield, Illinois", or "40.71, -74.01"
+# units = "fahrenheit"           # default: celsius
+
+# Stock, ETF, index or currency quotes from Yahoo Finance (free, no key;
+# some exchanges are delayed). Refreshed every 5 minutes; only the symbols
+# are sent. Not in the default set.
+# [[widgets]]
+# type = "stocks"
+# symbols = ["AAPL", "^GSPC", "EURUSD=X"]
+
+[[widgets]]
+type = "battery"
+
+# [[widgets]]
+# type = "label"
+# text = "hello"

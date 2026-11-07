@@ -1,0 +1,13 @@
+[package]
+name = "sidebar-core"
+description = "Platform-independent sidebar model: geometry, snapping, layout, widgets, display lists."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+# INVARIANT: this crate must never depend on an OS, windowing system,
+# compositor protocol, or GUI toolkit. If you need one, it belongs in
+# sidebar-platform behind the `Platform` trait.
+[dependencies]

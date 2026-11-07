@@ -1,0 +1,14 @@
+[package]
+name = "sidebar-online"
+description = "Online data for sidebar widgets (weather, stock quotes), fetched in the background."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+sidebar-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+ureq.workspace = true
