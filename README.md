@@ -21,7 +21,7 @@ or left floating, and are configured from a settings window or a TOML file.
 > **Status:** early (0.1). Developed and used on GNOME (through XWayland)
 > and X11. The Wayland backend works on compositors with layer-shell but has
 > had less testing. The Windows backend is new and has been tested on
-> Windows 11; there are no prebuilt binaries yet.
+> Windows 11.
 
 ## Platform support
 
@@ -34,6 +34,23 @@ or left floating, and are configured from a settings window or a TOML file.
 | macOS | – | Not supported yet. |
 
 ## Install
+
+### Download
+
+[Releases](https://github.com/cksandal/sidebar/releases) have ready-made
+binaries for 64-bit Windows and Linux:
+
+- **Windows:** unzip `sidebar-…-windows-x86_64.zip` anywhere and run
+  `sidebar.exe`. The binary isn't code-signed yet, so SmartScreen may warn
+  the first time: choose **More info → Run anyway**.
+- **Linux:** unpack `sidebar-…-linux-x86_64.tar.gz` and copy `sidebar` to a
+  folder on your `PATH`, such as `~/.local/bin`. It needs glibc 2.35 or
+  newer (Ubuntu 22.04, Debian 12, Fedora 36 and later).
+
+`SHA256SUMS` lists the files' checksums. Then turn on
+[start at login](#start-at-login) if you like.
+
+### Build from source
 
 You need Rust 1.88 or newer ([rustup.rs](https://rustup.rs)). No other
 libraries or packages are required to build it.
@@ -243,7 +260,7 @@ together.
 
 ## Roadmap
 
-- Prebuilt Windows binaries.
+- Code-signed Windows binaries, and packages for Linux distributions.
 - Intel GPUs on Linux.
 - Dragging widgets between monitors on Wayland.
 - Dead keys and compose sequences in the settings window on Wayland.

@@ -1,0 +1,69 @@
+name: Release
+
+# Pushing a tag such as v0.1.0 builds the binaries and publishes a GitHub
+# release with them, using that version's section of CHANGELOG.md as notes.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --workspace --locked
+      - run: cargo build --release --locked -p sidebar-app
+      - name: Package
+        shell: pwsh
+        run: |
+          $name = "sidebar-$($env:GITHUB_REF_NAME)-windows-x86_64"
+          New-Item -ItemType Directory $name | Out-Null
+          Copy-Item target/release/sidebar.exe, README.md, CHANGELOG.md, LICENSE-MIT, LICENSE-APACHE, config.example.toml $name
+          Compress-Archive $name "$name.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: sidebar-*.zip
+
+  linux:
+    # The oldest supported runner, so the binary runs on older distributions
+    # too (it needs glibc 2.35 or newer).
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo test --workspace --locked
+      - run: cargo build --release --locked -p sidebar-app
+      - name: Package
+        run: |
+          name="sidebar-${GITHUB_REF_NAME}-linux-x86_64"
+          mkdir "$name"
+          cp target/release/sidebar README.md CHANGELOG.md LICENSE-MIT LICENSE-APACHE config.example.toml packaging/sidebar.desktop "$name"
+          tar czf "$name.tar.gz" "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: sidebar-*.tar.gz
+
+  release:
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '/^## / { on = index($0, "## " v) == 1; next } on' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "no CHANGELOG.md section for $version" >&2; exit 1; }
+          sha256sum sidebar-*.zip sidebar-*.tar.gz > SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md sidebar-*.zip sidebar-*.tar.gz SHA256SUMS
