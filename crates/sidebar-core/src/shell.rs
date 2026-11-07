@@ -481,13 +481,15 @@ impl Shell {
                     return;
                 }
             }
-            // The wheel scrolls a dock whose widgets don't fit.
+            // The widget under the pointer gets the wheel first (a volume
+            // control); otherwise it scrolls a dock whose widgets don't fit.
             InputEvent::Scroll { dx, dy, .. } => {
-                if let SurfaceTarget::Dock(key) = target
-                    && self.scroll_dock(key, if dy != 0.0 { dy } else { dx })
+                if !self.route(target, event, None)
+                    && let SurfaceTarget::Dock(key) = target
                 {
-                    return;
+                    self.scroll_dock(key, if dy != 0.0 { dy } else { dx });
                 }
+                return;
             }
             InputEvent::PointerButton { pos, button: PointerButton::Primary, pressed } => {
                 self.press = match (pressed, global, self.hit(target, pos)) {
@@ -504,21 +506,24 @@ impl Shell {
         self.layout(target).into_iter().find(|(_, r)| r.contains(pos))
     }
 
-    /// Delivers `event` to the widget under its position, or to `only`.
-    fn route(&mut self, target: SurfaceTarget, event: &InputEvent, only: Option<WidgetId>) {
+    /// Delivers `event` to the widget under its position, or to `only`;
+    /// true if the widget used it.
+    fn route(&mut self, target: SurfaceTarget, event: &InputEvent, only: Option<WidgetId>) -> bool {
         let hit = match (only, event.position()) {
             (Some(id), _) => self.layout(target).into_iter().find(|(w, _)| *w == id),
             (None, Some(pos)) => self.hit(target, pos),
             (None, None) => None,
         };
-        let Some((id, bounds)) = hit else { return };
+        let Some((id, bounds)) = hit else { return false };
         let before = self.floating_extent(id);
         if let Some(entry) = self.entries.get_mut(&id)
             && entry.widget.on_input(event, bounds)
         {
             self.dirty.insert(target);
             self.refit_floating(id, before);
+            return true;
         }
+        false
     }
 
     /// For a floating widget: its rect and its measured height.

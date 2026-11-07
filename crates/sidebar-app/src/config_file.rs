@@ -86,6 +86,10 @@ pub enum WidgetSpec {
         symbols: Vec<String>,
     },
     Battery,
+    /// Space on each filesystem or drive, and read and write rates.
+    Disk,
+    /// Volume of the default audio output; the wheel changes it.
+    Audio,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
@@ -116,6 +120,8 @@ impl WidgetSpec {
             WidgetSpec::Weather { .. } => "weather",
             WidgetSpec::Stocks { .. } => "stocks",
             WidgetSpec::Battery => "battery",
+            WidgetSpec::Disk => "disk",
+            WidgetSpec::Audio => "audio",
         }
     }
 }

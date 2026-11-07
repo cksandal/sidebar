@@ -71,6 +71,17 @@ type = "network"
 [[widgets]]
 type = "battery"
 
+# Space on each filesystem (Linux) or fixed drive (Windows), and read and
+# write rates. Not in the default set.
+# [[widgets]]
+# type = "disk"
+
+# Volume of the default audio output: scroll over it to change the volume,
+# click the bar to set it, click elsewhere to mute. Uses wpctl or pactl on
+# Linux. Not in the default set.
+# [[widgets]]
+# type = "audio"
+
 # [[widgets]]
 # type = "label"
 # text = "hello"

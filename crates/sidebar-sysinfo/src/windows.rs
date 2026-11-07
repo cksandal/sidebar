@@ -9,7 +9,8 @@
 use std::mem::{size_of, zeroed};
 
 use sidebar_core::Source;
-use sidebar_core::source::{Battery, CoreGroup, CpuInfo, CpuSample, Memory, UtcOffset};
+use sidebar_core::source::{Battery, CoreGroup, CpuInfo, CpuSample, DiskSample, Memory, UtcOffset, Volume};
+use windows_sys::Win32::Storage::FileSystem::{GetDiskFreeSpaceExW, GetDriveTypeW, GetLogicalDriveStringsW};
 use windows_sys::Wdk::System::SystemInformation::{NtQuerySystemInformation, SystemProcessorPerformanceInformation};
 use windows_sys::Win32::System::Performance::{
     PDH_CSTATUS_NEW_DATA, PDH_CSTATUS_VALID_DATA, PDH_FMT_COUNTERVALUE, PDH_FMT_DOUBLE, PDH_HCOUNTER, PDH_HQUERY, PdhAddEnglishCounterW,
@@ -23,8 +24,15 @@ use windows_sys::Win32::System::SystemInformation::{
 use windows_sys::Win32::System::Time::{DYNAMIC_TIME_ZONE_INFORMATION, GetDynamicTimeZoneInformation, TIME_ZONE_ID_INVALID};
 use windows_sys::Win32::System::WindowsProgramming::SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION;
 
+pub use crate::audio_windows::audio;
 pub use crate::net_windows::network;
-pub use crate::nvml::gpus;
+/// NVIDIA GPUs through NVML, then the rest through performance counters.
+pub fn gpus() -> Vec<crate::Gpu> {
+    let mut gpus = crate::nvml::gpus();
+    let nvml_found = !gpus.is_empty();
+    gpus.extend(crate::gpu_windows::gpus(nvml_found));
+    gpus
+}
 
 /// Null-terminated UTF-16, for Win32 string arguments.
 pub(crate) fn wide(s: &str) -> Vec<u16> {
@@ -249,6 +257,43 @@ impl Drop for PerfCounter {
         // SAFETY: the query is open and closed only here.
         unsafe { PdhCloseQuery(self.query) };
     }
+}
+
+// ----------------------------------------------------------------- disks
+
+pub fn disks() -> Box<dyn Source<DiskSample>> {
+    let mut read = PerfCounter::open(r"\PhysicalDisk(_Total)\Disk Read Bytes/sec");
+    let mut write = PerfCounter::open(r"\PhysicalDisk(_Total)\Disk Write Bytes/sec");
+    Box::new(move || {
+        let rate = |c: &mut Option<PerfCounter>| c.as_mut().and_then(PerfCounter::read);
+        Some(DiskSample { volumes: fixed_drives(), read_rate: rate(&mut read), write_rate: rate(&mut write) })
+    })
+}
+
+/// Fixed (internal) drives with their space, as "C:".
+fn fixed_drives() -> Vec<Volume> {
+    const DRIVE_FIXED: u32 = 3;
+    let mut buf = [0u16; 512];
+    // SAFETY: the length matches the buffer.
+    let n = unsafe { GetLogicalDriveStringsW(buf.len() as u32, buf.as_mut_ptr()) } as usize;
+    buf[..n.min(buf.len())]
+        .split(|&c| c == 0)
+        .filter(|root| !root.is_empty())
+        .filter_map(|root| {
+            let path: Vec<u16> = root.iter().copied().chain([0]).collect();
+            // SAFETY: a NUL-terminated root path such as "C:\".
+            if unsafe { GetDriveTypeW(path.as_ptr()) } != DRIVE_FIXED {
+                return None;
+            }
+            let (mut total, mut free) = (0u64, 0u64);
+            // SAFETY: as above, with valid out pointers.
+            if unsafe { GetDiskFreeSpaceExW(path.as_ptr(), std::ptr::null_mut(), &mut total, &mut free) } == 0 || total == 0 {
+                return None;
+            }
+            let name = from_wide(root).trim_end_matches('\\').to_string();
+            Some(Volume { name, used_bytes: total - free, total_bytes: total })
+        })
+        .collect()
 }
 
 // ---------------------------------------------------------------- memory

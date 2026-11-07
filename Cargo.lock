@@ -583,6 +583,7 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "sidebar-core",
+ "windows-link",
  "windows-sys 0.61.2",
 ]
 

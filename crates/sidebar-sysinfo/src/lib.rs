@@ -5,7 +5,7 @@
 //! OS without one, sources report `None` and widgets show "n/a".
 
 use sidebar_core::Source;
-use sidebar_core::source::{Battery, CpuInfo, CpuSample, GpuInfo, GpuSample, Memory, NetSample, UtcOffset};
+use sidebar_core::source::{Battery, CpuInfo, CpuSample, DiskSample, GpuInfo, GpuSample, Memory, NetSample, UtcOffset};
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -13,11 +13,25 @@ mod linux;
 use linux as imp;
 #[cfg(target_os = "linux")]
 mod net_linux;
+#[cfg(target_os = "linux")]
+mod audio_linux;
+#[cfg(target_os = "linux")]
+mod disk_linux;
+#[cfg(target_os = "linux")]
+mod drm_linux;
+mod audio;
+pub use audio::Audio;
 #[cfg(any(target_os = "linux", windows))]
 mod nvml;
 #[cfg(any(target_os = "linux", windows))]
 mod traffic;
 
+#[cfg(windows)]
+mod audio_windows;
+#[cfg(windows)]
+mod com;
+#[cfg(windows)]
+mod gpu_windows;
 #[cfg(windows)]
 mod net_windows;
 #[cfg(windows)]
@@ -55,8 +69,9 @@ pub struct Gpu {
     pub source: Box<dyn Source<GpuSample>>,
 }
 
-/// GPUs this build can read (NVIDIA through NVML); empty when
-/// there are none or the driver is missing.
+/// GPUs this build can read: NVIDIA through NVML, AMD through sysfs on
+/// Linux, and the rest through performance counters on Windows. Empty
+/// when there are none or the drivers are missing.
 pub fn gpus() -> Vec<Gpu> {
     imp::gpus()
 }
@@ -65,6 +80,18 @@ pub fn gpus() -> Vec<Gpu> {
 /// default route when `None`. `None` on OSes without an implementation.
 pub fn network(interface: Option<String>) -> Option<Box<dyn Source<NetSample>>> {
     imp::network(interface)
+}
+
+/// Space on each mounted filesystem (Linux) or fixed drive (Windows), and
+/// read and write rates across the physical disks.
+pub fn disks() -> Box<dyn Source<DiskSample>> {
+    imp::disks()
+}
+
+/// Volume and mute of the default audio output, with a control to change
+/// them; `None` when there is no output or no way to reach it.
+pub fn audio() -> Option<Audio> {
+    imp::audio()
 }
 
 /// Local time zone offset; follows DST and time zone changes.

@@ -1,7 +1,7 @@
 //! Fallback for operating systems without an implementation.
 
 use sidebar_core::Source;
-use sidebar_core::source::{Battery, CpuInfo, CpuSample, Memory, UtcOffset};
+use sidebar_core::source::{Battery, CpuInfo, CpuSample, DiskSample, Memory, UtcOffset};
 
 pub fn cpu() -> Box<dyn Source<CpuSample>> {
     Box::new(|| None)
@@ -29,4 +29,12 @@ pub fn battery() -> Option<Box<dyn Source<Battery>>> {
 
 pub fn utc_offset() -> Box<dyn Source<UtcOffset>> {
     Box::new(|| Some(UtcOffset(0)))
+}
+
+pub fn disks() -> Box<dyn Source<DiskSample>> {
+    Box::new(|| None)
+}
+
+pub fn audio() -> Option<crate::Audio> {
+    None
 }

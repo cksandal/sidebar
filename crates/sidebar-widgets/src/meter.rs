@@ -81,7 +81,12 @@ pub(crate) fn chart_height(graph: f32) -> f32 {
 /// "5.5G", or "26G" once there is no room for a decimal.
 pub(crate) fn format_gib(bytes: u64) -> String {
     let gib = bytes as f64 / GIB;
-    if gib < 10.0 { format!("{gib:.1}G") } else { format!("{gib:.0}G") }
+    match gib {
+        g if g < 10.0 => format!("{g:.1}G"),
+        g if g < 1000.0 => format!("{g:.0}G"),
+        // Disks: "1.8T", "12T".
+        g => format_bytes(g * GIB),
+    }
 }
 
 /// Bytes with binary units, one decimal below 10: "980B", "2.9G", "16G".
@@ -334,6 +339,7 @@ mod tests {
     fn formats_values() {
         assert_eq!(format_gib(5 * (1 << 30) + (1 << 29)), "5.5G");
         assert_eq!(format_gib(26 << 30), "26G");
+        assert_eq!(format_gib(1832 << 30), "1.8T");
         assert_eq!(format_celsius(Some(61.6)), "62°C");
         assert_eq!(percent(Some(0.344)), "34%");
         assert_eq!(percent(None), "-");

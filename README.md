@@ -7,8 +7,8 @@ or left floating, and are configured from a settings window or a TOML file.
 ![Clock, calendar, CPU, GPU, weather and stock widgets](docs/screenshot.png)
 
 - **Widgets:** clock, calendar, CPU (per-core load, P-/E-cores, temperature,
-  RAM and swap), NVIDIA GPU, network, weather, stock quotes, battery, text
-  label.
+  RAM and swap), GPU, network, disks, audio volume, weather, stock quotes,
+  battery, text label.
 - **Drag and drop:** drag any widget to another screen edge, between other
   widgets, or into the middle of the screen. Placements are remembered.
 - **Settings window:** turn widgets on and off, reorder them, and edit their
@@ -56,9 +56,14 @@ described in [CONTRIBUTING.md](CONTRIBUTING.md#windows).
 
 Optional extras:
 
-- **NVIDIA GPU widget:** needs the NVIDIA driver, which provides
-  `libnvidia-ml.so.1` (`nvml.dll` on Windows). Without it, the GPU widget is
-  skipped.
+- **GPU widget:** NVIDIA GPUs need the NVIDIA driver, which provides
+  `libnvidia-ml.so.1` (`nvml.dll` on Windows). AMD GPUs on Linux are read
+  from the `amdgpu` driver. On Windows, other GPUs (AMD, Intel) are read
+  from the system's GPU performance counters, without temperature, fan or
+  power. Intel GPUs on Linux aren't supported: their load is only reported
+  to privileged programs. Without a supported GPU, the widget is skipped.
+- **Audio widget (Linux):** uses `wpctl` (PipeWire) or `pactl`
+  (PulseAudio), one of which almost every desktop has.
 - **Wi-Fi network name and link speed (Linux):** read with `iw` if it is
   installed. Without it, the network widget still shows addresses, signal
   and traffic. Windows reports these itself.
@@ -154,7 +159,9 @@ symbols = ["AAPL", "^GSPC", "EURUSD=X"]
 ```
 
 Listing any `[[widgets]]` replaces the default set. Misspelled options are
-reported as errors rather than silently ignored. Dragged positions are saved
+reported as errors rather than silently ignored. The sidebar reloads by
+itself a second after you save the file; if the file has an error, it
+keeps running as it was and prints what's wrong. Dragged positions are saved
 separately in `~/.local/state/sidebar/layout.toml`
 (`%LOCALAPPDATA%\sidebar\layout.toml` on Windows); delete that file to reset
 them.
@@ -166,11 +173,13 @@ them.
 | `clock` | Time and date, with the ⟳ and ⚙ buttons | – |
 | `calendar` | Month grid with ISO week numbers | `week_start = "sunday"` or `"monday"` |
 | `cpu` | Total and per-core load, clock speed, temperature, RAM and swap | – |
-| `gpu` | NVIDIA GPU load, memory, encoder and decoder, fan, power, temperature | `index`: which GPU, counting from 0 |
+| `gpu` | GPU load, memory, encoder and decoder, fan, power, temperature (what the driver reports) | `index`: which GPU, counting from 0 |
 | `network` | Wi-Fi name and signal, IP addresses, gateway, traffic | `interface`, e.g. `"enp4s0"` (default: the one with the default route) |
 | `weather` | Current conditions, next hours and next six days | `location` (required), `units = "celsius"` or `"fahrenheit"` |
 | `stocks` | Price, daily change and an intraday chart per symbol | `symbols` (required), in Yahoo Finance notation |
 | `battery` | Charge level (skipped on machines without a battery) | – |
+| `disk` | Used, free and total space per filesystem or drive; read and write rates | – |
+| `audio` | Output volume and device; scroll to change it, click the bar to set it, click elsewhere to mute | – |
 | `label` | A line of text | `text` (required) |
 
 ### Command line
@@ -197,8 +206,9 @@ are off unless you add them:
   so it may change or be rate-limited. Quotes may be delayed and are for
   information only.
 
-Everything else is read locally: `/proc`, `/sys` and `iw` on Linux, the
-system APIs on Windows, and the NVIDIA driver library.
+Everything else is read locally: `/proc`, `/sys`, `iw` and `wpctl` or
+`pactl` on Linux, the system APIs on Windows, and the NVIDIA driver
+library.
 
 ## Troubleshooting
 
@@ -210,9 +220,9 @@ system APIs on Windows, and the NVIDIA driver library.
   (videos, games) cover it on purpose.
 - **The sidebar won't move to the other edge.** Check for a GNOME extension
   or window rule that positions windows titled `sidebar`.
-- **No GPU widget.** Only NVIDIA GPUs are supported so far, through the
-  driver's NVML library. Run `sidebar` from a terminal; skipped widgets are
-  reported there.
+- **No GPU widget.** See the GPU notes under [Install](#install) for what
+  is supported. Run `sidebar` from a terminal; skipped widgets are reported
+  there.
 - **"place not found" in the weather widget.** Add a region or country, as
   in `"Springfield, Illinois"` or `"Paris, France"`, or use coordinates.
 - **Stocks show "offline".** Yahoo occasionally rejects requests. The widget
@@ -231,10 +241,9 @@ together.
 ## Roadmap
 
 - Prebuilt Windows binaries.
-- AMD and Intel GPUs; disk and audio widgets.
+- Intel GPUs on Linux.
 - Settings window and floating widgets on Wayland.
 - HiDPI scaling on X11; fractional scaling on Wayland.
-- Reloading the config automatically when the file changes.
 
 ## License
 

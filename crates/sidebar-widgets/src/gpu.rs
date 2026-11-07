@@ -37,13 +37,17 @@ fn memory_fraction(s: &GpuSample) -> Option<f32> {
 /// GPU load, clocks and name; a VRAM table; a bar each for the engine,
 /// VRAM, memory bus, video encoder and decoder, fan and power; a chart of
 /// all of them; and a temperature chart. Laid out like [`crate::CpuGraph`],
-/// with the same compact fallback.
+/// with the same compact fallback. Rows the driver doesn't report (on its
+/// first sample) are left out, as is the clock line.
 pub struct GpuGraph {
     source: Box<dyn Source<GpuSample>>,
     every: Every,
     name: String,
     temperature: bool,
     history: VecDeque<GpuSample>,
+    /// What the driver reports, from its first sample: the rows of
+    /// [`SERIES`], and whether there are clocks.
+    reported: Option<(Vec<usize>, bool)>,
 }
 
 impl GpuGraph {
@@ -54,14 +58,24 @@ impl GpuGraph {
             name: short_name(&info.name),
             temperature: info.temperature,
             history: VecDeque::with_capacity(HISTORY),
+            reported: None,
         }
+    }
+
+    /// Indices into [`SERIES`] of the rows to show.
+    fn rows(&self) -> Vec<usize> {
+        self.reported.as_ref().map_or_else(|| (0..SERIES.len()).collect(), |(rows, _)| rows.clone())
+    }
+
+    fn clocks(&self) -> bool {
+        self.reported.as_ref().is_none_or(|(_, clocks)| *clocks)
     }
 
     fn full_height(&self) -> f32 {
         let header = line_height(crate::HEADER_SIZE) + GAP;
-        let rows = meter::table_height(1) + SERIES.len() as f32 * meter::row_height() + SECTION_GAP;
+        let rows = meter::table_height(1) + self.rows().len() as f32 * meter::row_height() + SECTION_GAP;
         let temp = if self.temperature { SECTION_GAP + meter::chart_height(TEMP_HEIGHT) } else { 0.0 };
-        header + meter::details_height(2) + rows + meter::chart_height(GRAPH_HEIGHT) + temp + 2.0 * CARD_PAD
+        header + meter::details_height(1 + usize::from(self.clocks())) + rows + meter::chart_height(GRAPH_HEIGHT) + temp + 2.0 * CARD_PAD
     }
 
     fn last(&self) -> Option<&GpuSample> {
@@ -101,6 +115,10 @@ impl Widget for GpuGraph {
             return false;
         }
         let Some(sample) = self.source.sample() else { return false };
+        if self.reported.is_none() {
+            let rows = (0..SERIES.len()).filter(|&i| (SERIES[i].fraction)(&sample).is_some()).collect();
+            self.reported = Some((rows, sample.core_mhz.is_some() || sample.memory_mhz.is_some()));
+        }
         if self.history.len() == HISTORY {
             self.history.pop_front();
         }
@@ -127,13 +145,18 @@ impl Widget for GpuGraph {
         let mhz = |v: Option<f32>| v.map_or("-".into(), |m| format!("{m:.0}"));
         let clocks = format!("Core {} · Mem {} MHz", mhz(self.last().and_then(|s| s.core_mhz)), mhz(self.last().and_then(|s| s.memory_mhz)));
         let fg = ctx.theme.foreground;
-        let mut y = meter::details(ctx, rest, vec![(clocks, meter::color(2)), (self.name.clone(), fg.with_alpha(200))]);
+        let mut lines = vec![(self.name.clone(), fg.with_alpha(200))];
+        if self.clocks() {
+            lines.insert(0, (clocks, meter::color(2)));
+        }
+        let mut y = meter::details(ctx, rest, lines);
 
         let label_w = SERIES.iter().map(|s| ctx.text.measure(s.label, ROW_SIZE).width).fold(0.0, f32::max);
         let at = |y| Rect::new(rest.x, y, rest.width, 0.0);
         let vram = self.last().map(|s| (s.memory_used_bytes, s.memory_total_bytes));
         y = meter::memory_table(ctx, at(y), label_w, &[("VRAM", vram)]);
-        for (i, series) in SERIES.iter().enumerate() {
+        for i in self.rows() {
+            let series = &SERIES[i];
             let fraction = self.last().and_then(series.fraction);
             let value = match series.value {
                 Some(text) => self.last().and_then(text).unwrap_or_else(|| "-".into()),
@@ -188,6 +211,16 @@ mod tests {
     }
 
     #[test]
+    fn leaves_out_what_the_driver_does_not_report() {
+        let bare = GpuSample { load: 0.25, memory_used_bytes: GIB, memory_total_bytes: 4 * GIB, ..GpuSample::default() };
+        let mut gpu = GpuGraph::new(Box::new(move || Some(bare)), GpuInfo { name: "AMD Radeon RX 6800".into(), temperature: false });
+        assert!(gpu.update(&UpdateCtx { now: SystemTime::UNIX_EPOCH }));
+        let text = drawn_text(&gpu, 200.0, gpu.full_height());
+        assert_eq!(text[..3], ["GPU", "25%", "AMD Radeon RX 6800"]);
+        assert_eq!(text[11..], ["GPU", "25%", "VRAM", "25%", "Load", "25%"]);
+    }
+
+    #[test]
     fn shows_engines_memory_and_power() {
         let mut loads = [0.02, 0.5].into_iter();
         let mut gpu = GpuGraph::new(Box::new(move || loads.next().map(sample)), info());
@@ -201,10 +234,10 @@ mod tests {
         assert_eq!(text[..4], ["GPU", "50%", "Core 1282 · Mem 7001 MHz", "GeForce RTX 5060 Ti"]);
         assert_eq!(text[8..12], ["VRAM", "1.2G", "15G", "16G"]);
         assert_eq!(
-            text[12..26],
-            ["GPU", "50%", "VRAM", "8%", "Bus", "10%", "Enc", "0%", "Dec", "-", "Fan", "30%", "Power", "14 W"]
+            text[12..24],
+            ["GPU", "50%", "VRAM", "8%", "Bus", "10%", "Enc", "0%", "Fan", "30%", "Power", "14 W"]
         );
-        assert_eq!(text[26..], ["Load", "50%", "Temp", "48°C"]);
+        assert_eq!(text[24..], ["Load", "50%", "Temp", "48°C"]);
 
         let h = gpu.full_height();
         assert_eq!(rects_in(&gpu, 200.0, h, area_color(Theme::default().accent)).len(), 2);

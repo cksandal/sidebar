@@ -231,3 +231,39 @@ impl Quote {
         if self.previous_close == 0.0 { 0.0 } else { self.change() / self.previous_close * 100.0 }
     }
 }
+
+/// One mounted filesystem (Linux) or fixed drive (Windows).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Volume {
+    /// Mount point ("/", "/home") or drive ("C:").
+    pub name: String,
+    pub used_bytes: u64,
+    pub total_bytes: u64,
+}
+
+/// Disk space and activity.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DiskSample {
+    pub volumes: Vec<Volume>,
+    /// Bytes per second across all physical disks; `None` on the first
+    /// sample or when unknown.
+    pub read_rate: Option<f64>,
+    pub write_rate: Option<f64>,
+}
+
+/// The default audio output.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct AudioSample {
+    /// `0.0..=1.0` (some systems allow more; shown as is).
+    pub volume: f32,
+    pub muted: bool,
+    /// e.g. "Speakers (Realtek Audio)", when the system says.
+    pub device: Option<String>,
+}
+
+/// Changes the default audio output. Calls return at once; the change
+/// shows up in the next [`AudioSample`].
+pub trait AudioControl {
+    fn set_volume(&self, volume: f32);
+    fn set_muted(&self, muted: bool);
+}

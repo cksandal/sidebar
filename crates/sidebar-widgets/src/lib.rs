@@ -4,10 +4,12 @@
 //! (CPU load, battery, network) gets it through a `sidebar_core::Source`
 //! with per-OS implementations, never by calling OS APIs from the widget.
 
+mod audio;
 mod battery;
 mod calendar;
 mod clock;
 mod cpu;
+mod disk;
 mod gpu;
 mod icons;
 mod label;
@@ -16,10 +18,12 @@ mod network;
 mod stocks;
 mod weather;
 
+pub use audio::AudioMeter;
 pub use battery::BatteryMeter;
 pub use calendar::Calendar;
 pub use clock::Clock;
 pub use cpu::CpuGraph;
+pub use disk::DiskGraph;
 pub use gpu::GpuGraph;
 pub use label::Label;
 pub use network::NetGraph;

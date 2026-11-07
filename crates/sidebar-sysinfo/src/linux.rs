@@ -128,7 +128,15 @@ fn stat_cpu_ids(text: &str) -> Vec<u32> {
     text.lines().filter_map(|l| l.split_whitespace().next()?.strip_prefix("cpu")?.parse().ok()).collect()
 }
 
-pub use crate::nvml::gpus;
+/// NVIDIA GPUs through NVML, then AMD GPUs through sysfs.
+pub fn gpus() -> Vec<crate::Gpu> {
+    let mut gpus = crate::nvml::gpus();
+    gpus.extend(crate::drm_linux::gpus());
+    gpus
+}
+
+pub use crate::audio_linux::audio;
+pub use crate::disk_linux::disks;
 
 pub fn network(interface: Option<String>) -> Option<Box<dyn Source<sidebar_core::source::NetSample>>> {
     Some(crate::net_linux::network(interface))

@@ -23,6 +23,13 @@ First public release.
 - Weather refreshes every 15 minutes, and soon after the computer wakes
   from sleep.
 - Start at login, from the settings window or `--autostart on|off`.
+- Disk widget (space per filesystem or drive, read and write rates) and
+  audio widget (output volume: scroll to change, click to mute).
+- GPUs beyond NVIDIA: AMD on Linux through `amdgpu`; any vendor on Windows
+  through the GPU performance counters. Rows a driver doesn't report are
+  left out.
+- The config file is reloaded automatically when it changes and is
+  valid.
 - Docks whose widgets don't fit scroll with the mouse wheel, and stay
   clear of the Windows taskbar.
 - Windows: no console window; messages go to the terminal it was started

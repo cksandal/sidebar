@@ -18,7 +18,7 @@ use std::sync::mpsc::{self, Sender};
 use sidebar_core::{Edge, SavedSpot, Shell, Widget, WidgetId};
 use sidebar_platform::headless::HeadlessPlatform;
 use sidebar_platform::{Capabilities, Platform, PlatformError};
-use sidebar_widgets::{BatteryMeter, Calendar, Clock, CpuGraph, GpuGraph, Label, NetGraph, StockTicker, WeatherCard};
+use sidebar_widgets::{AudioMeter, BatteryMeter, Calendar, Clock, CpuGraph, DiskGraph, GpuGraph, Label, NetGraph, StockTicker, WeatherCard};
 
 use crate::config_file::{ConfigFile, WidgetSpec};
 use crate::runtime::{Action, Exit, Panel, Runtime};
@@ -137,6 +137,11 @@ fn build_widget(spec: &WidgetSpec, actions: &Sender<Action>) -> Option<Box<dyn W
             Box::new(StockTicker::new(symbols.clone(), sidebar_online::yahoo_quotes(symbols)))
         }
         WidgetSpec::Battery => Box::new(BatteryMeter::new(sidebar_sysinfo::battery()?)),
+        WidgetSpec::Disk => Box::new(DiskGraph::new(sidebar_sysinfo::disks())),
+        WidgetSpec::Audio => {
+            let audio = sidebar_sysinfo::audio()?;
+            Box::new(AudioMeter::new(audio.source, audio.control))
+        }
     })
 }
 
@@ -227,6 +232,61 @@ fn edit_config_file(path: Option<&Path>, specs: &[WidgetSpec], why: &str) {
     }
 }
 
+/// Reports a new value once it has been seen twice in a row, so a file
+/// that is still being written isn't read halfway.
+struct Debounce<T> {
+    last: T,
+    pending: Option<T>,
+}
+
+impl<T: PartialEq + Clone> Debounce<T> {
+    fn new(value: T) -> Self {
+        Self { last: value, pending: None }
+    }
+
+    fn changed(&mut self, now: T) -> bool {
+        if now == self.last {
+            self.pending = None;
+            false
+        } else if self.pending.as_ref() == Some(&now) {
+            self.last = now;
+            self.pending = None;
+            true
+        } else {
+            self.pending = Some(now);
+            false
+        }
+    }
+}
+
+/// Reloads when the config file changes, once the change has settled and
+/// only if the new file is valid: a typo while editing prints a warning
+/// instead of stopping the sidebar.
+fn watch_config(path: PathBuf, actions: Sender<Action>) {
+    let stamp = |p: &Path| std::fs::metadata(p).and_then(|m| m.modified()).ok();
+    let mut watch = Debounce::new(stamp(&path));
+    let spawned = std::thread::Builder::new().name("config-watch".into()).spawn(move || {
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            let now = stamp(&path);
+            if !watch.changed(now) || now.is_none() {
+                continue;
+            }
+            match ConfigFile::load(&path, true).and_then(|f| f.to_config()) {
+                Ok(_) => {
+                    eprintln!("{} changed; reloading", path.display());
+                    let _ = actions.send(Action::Reload);
+                    return;
+                }
+                Err(e) => eprintln!("not reloading: {e}"),
+            }
+        }
+    });
+    if let Err(e) = spawned {
+        eprintln!("warning: not watching the config file: {e}");
+    }
+}
+
 /// Replaces this process with a fresh copy started with the same
 /// arguments (minus `--settings`), so the config is read again and a
 /// rebuilt binary is picked up. Only returns on failure.
@@ -295,6 +355,9 @@ fn run() -> Result<Exit, String> {
     if args.settings {
         let _ = actions.send(Action::OpenSettings);
     }
+    if let Some(path) = &config_path {
+        watch_config(path.clone(), actions.clone());
+    }
 
     let theme = shell.config().theme.clone();
     let fallback_path = config_path.clone();
@@ -335,5 +398,23 @@ fn main() -> ExitCode {
             eprintln!("error: {msg}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn debounces_changes() {
+        let mut d = Debounce::new(1);
+        assert!(!d.changed(1));
+        assert!(!d.changed(2), "first sighting");
+        assert!(!d.changed(3), "still changing");
+        assert!(d.changed(3));
+        assert!(!d.changed(3));
+        // A change that reverts before settling is no change.
+        assert!(!d.changed(4));
+        assert!(!d.changed(3));
     }
 }

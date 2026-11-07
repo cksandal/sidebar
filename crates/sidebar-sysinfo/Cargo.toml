@@ -15,6 +15,11 @@ sidebar-core.workspace = true
 # dlopen for NVML; getifaddrs.
 libc = "0.2"
 
+[target.'cfg(windows)'.dependencies]
+# Links system DLLs without import libraries; for DXGI, which windows-sys
+# leaves out (it is a COM API).
+windows-link = "0.2"
+
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.61"
 features = [
@@ -24,6 +29,7 @@ features = [
     "Win32_NetworkManagement_Ndis",
     "Win32_NetworkManagement_WiFi",
     "Win32_Networking_WinSock",
+    "Win32_Storage_FileSystem",
     "Win32_System_LibraryLoader",
     "Win32_System_Performance",
     "Win32_System_Power",

@@ -28,6 +28,12 @@ crates/
     linux.rs          /proc, /sys (hwmon, thermal, power_supply), localtime_r
     net_linux.rs      /proc/net, getifaddrs, `iw` for Wi-Fi details
     nvml.rs           NVIDIA GPUs through NVML, loaded at run time (dlopen / LoadLibrary)
+    drm_linux.rs      AMD GPUs through amdgpu's sysfs files; names from pci.ids
+    disk_linux.rs     /proc/self/mounts, statvfs, /proc/diskstats
+    audio.rs          audio thread shared by audio_linux.rs (wpctl, pactl) and
+                      audio_windows.rs (Core Audio)
+    gpu_windows.rs    other GPUs through DXGI and the "GPU Engine" counters
+    com.rs            calling COM interfaces windows-sys leaves out
     windows.rs        NtQuerySystemInformation, PDH, GlobalMemoryStatusEx, power and time zone APIs
     net_windows.rs    IP Helper (GetAdaptersAddresses, GetIfEntry2), WLAN API for Wi-Fi
     traffic.rs        byte counters to rates and session totals (shared)

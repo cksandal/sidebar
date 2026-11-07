@@ -83,6 +83,8 @@ fn catalog() -> Vec<WidgetSpec> {
         WidgetSpec::Weather { location: String::new(), units: TemperatureUnit::Celsius },
         WidgetSpec::Stocks { symbols: Vec::new() },
         WidgetSpec::Battery,
+        WidgetSpec::Disk,
+        WidgetSpec::Audio,
         WidgetSpec::Label { text: String::new() },
     ]
 }
@@ -98,6 +100,8 @@ fn display_name(spec: &WidgetSpec) -> &'static str {
         WidgetSpec::Weather { .. } => "Weather",
         WidgetSpec::Stocks { .. } => "Stocks",
         WidgetSpec::Battery => "Battery",
+        WidgetSpec::Disk => "Disks",
+        WidgetSpec::Audio => "Audio",
     }
 }
 
@@ -112,6 +116,8 @@ fn description(spec: &WidgetSpec) -> &'static str {
         WidgetSpec::Weather { .. } => "Forecast from Open-Meteo (location is sent there).",
         WidgetSpec::Stocks { .. } => "Quotes from Yahoo Finance, every 5 minutes.",
         WidgetSpec::Battery => "Charge level (skipped without a battery).",
+        WidgetSpec::Disk => "Space on each drive, and read and write rates.",
+        WidgetSpec::Audio => "Output volume: scroll to change, click to mute.",
     }
 }
 
@@ -809,7 +815,7 @@ mod tests {
     fn lists_configured_then_the_rest() {
         let (s, _, _) = settings(&[WidgetSpec::Cpu, WidgetSpec::Clock]);
         let names: Vec<String> = (0..s.entries.len()).map(|i| s.name(i)).collect();
-        assert_eq!(names, ["CPU & memory", "Clock", "Calendar", "GPU", "Network", "Weather", "Stocks", "Battery", "Label"]);
+        assert_eq!(names, ["CPU & memory", "Clock", "Calendar", "GPU", "Network", "Weather", "Stocks", "Battery", "Disks", "Audio", "Label"]);
         assert_eq!(s.entries.iter().filter(|e| e.enabled).count(), 2);
         assert!(texts(&s).contains(&"Per-core load, temperature, RAM and swap.".to_string()));
     }
