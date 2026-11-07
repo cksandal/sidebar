@@ -92,7 +92,8 @@ Linux.
 - **Network access** only happens in `sidebar-online`, on background
   threads, and only for widgets the user enabled. Say in the README what is
   sent where.
-- Match the surrounding code style, and keep `cargo build` free of warnings.
+- Match the surrounding code style, and keep `cargo build` and
+  `cargo clippy --workspace --all-targets` free of warnings (CI checks).
 
 ## Adding a widget
 

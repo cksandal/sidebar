@@ -27,9 +27,9 @@ or left floating, and are configured from a settings window or a TOML file.
 
 | Environment | Backend | Notes |
 |---|---|---|
-| X11 (any EWMH window manager) | `x11` | Full support, including the settings window and reserving screen space. |
+| X11 (any EWMH window manager) | `x11` | Full support, including the settings window and reserving screen space. HiDPI follows `Xft.dpi`, which desktops set to match their scale. |
 | GNOME on Wayland | `x11` through XWayland | Chosen automatically, because GNOME has no layer-shell. GNOME ignores reserved space here, so windows can cover the sidebar. |
-| KDE Plasma, Sway, Hyprland, COSMIC, river, labwc, niri | `wayland` | Docks use the layer-shell protocol. Widgets can't float, and ⚙ opens the config file instead of the settings window. |
+| KDE Plasma, Sway, Hyprland, COSMIC, river, labwc, niri | `wayland` | Docks use the layer-shell protocol. Floating widgets stay on the monitor they were dropped on. Fractional scales (125%, 150%) are drawn sharply where the compositor supports it. |
 | Windows 10 and 11 | `windows` | Full support. Docks reserve space like the taskbar does (as an AppBar). |
 | macOS | – | Not supported yet. |
 
@@ -218,6 +218,9 @@ library.
 - **Windows: maximized windows still cover the sidebar.** Check that
   **Reserve screen space** is on in the settings window. Full-screen apps
   (videos, games) cover it on purpose.
+- **Everything is too small or too large (X11).** The sidebar scales by
+  `Xft.dpi` (`xrdb -query` shows it). Set it with your desktop's scaling
+  setting, or start the sidebar with `SIDEBAR_SCALE=1.5` (1 to 4).
 - **The sidebar won't move to the other edge.** Check for a GNOME extension
   or window rule that positions windows titled `sidebar`.
 - **No GPU widget.** See the GPU notes under [Install](#install) for what
@@ -242,8 +245,8 @@ together.
 
 - Prebuilt Windows binaries.
 - Intel GPUs on Linux.
-- Settings window and floating widgets on Wayland.
-- HiDPI scaling on X11; fractional scaling on Wayland.
+- Dragging widgets between monitors on Wayland.
+- Dead keys and compose sequences in the settings window on Wayland.
 
 ## License
 

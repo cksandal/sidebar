@@ -112,6 +112,9 @@ pub struct X11Platform {
     lsb_first: bool,
     randr: bool,
     reserve_space: bool,
+    /// Logical-to-physical ratio for every monitor (X11 has one DPI for
+    /// the whole screen): from `Xft.dpi`, or `SIDEBAR_SCALE`.
+    scale: f32,
     monitors: Vec<MonitorInfo>,
     surfaces: HashMap<Window, Surface>,
     keymap: Keymap,
@@ -227,6 +230,11 @@ impl X11Platform {
             eprintln!("[x11] running under XWayland: struts are ignored by the compositor, space will not be reserved");
         }
 
+        let scale = screen_scale(&conn, root);
+        if scale != 1.0 {
+            eprintln!("[x11] scale {scale}");
+        }
+
         let mut platform = Self {
             conn,
             root,
@@ -236,6 +244,7 @@ impl X11Platform {
             lsb_first,
             randr,
             reserve_space: !xwayland,
+            scale,
             monitors: Vec::new(),
             surfaces: HashMap::new(),
             keymap: Keymap::default(),
@@ -260,26 +269,26 @@ impl X11Platform {
                     .reply()
                     .map(|r| String::from_utf8_lossy(&r.name).into_owned())
                     .unwrap_or_default();
-                let bounds = Rect::new(m.x.into(), m.y.into(), m.width.into(), m.height.into());
+                let bounds = self.to_logical(Rect::new(m.x.into(), m.y.into(), m.width.into(), m.height.into()));
                 monitors.push(MonitorInfo {
                     // The name atom is stable across reconfiguration.
                     id: MonitorId(m.name),
                     name,
                     bounds,
                     work_area: bounds,
-                    scale: 1.0,
+                    scale: self.scale,
                     primary: m.primary,
                 });
             }
         }
         if monitors.is_empty() {
-            let bounds = Rect::new(0.0, 0.0, self.root_size.0.into(), self.root_size.1.into());
+            let bounds = self.to_logical(Rect::new(0.0, 0.0, self.root_size.0.into(), self.root_size.1.into()));
             monitors.push(MonitorInfo {
                 id: MonitorId(0),
                 name: "screen".into(),
                 bounds,
                 work_area: bounds,
-                scale: 1.0,
+                scale: self.scale,
                 primary: true,
             });
         }
@@ -294,15 +303,16 @@ impl X11Platform {
             .ok_or_else(|| PlatformError::Backend(format!("unknown monitor {}", id.0)))
     }
 
-    fn scale_of(&self, window: Window) -> f32 {
-        self.surfaces
-            .get(&window)
-            .and_then(|s| self.monitor(s.spec.monitor).ok())
-            .map_or(1.0, |m| m.scale)
+    fn scale_of(&self, _window: Window) -> f32 {
+        self.scale
     }
 
-    /// Physical, root-relative rect for a spec. With scale fixed at 1.0,
-    /// global logical coordinates are already physical.
+    fn to_logical(&self, r: Rect) -> Rect {
+        Rect::new(r.x / self.scale, r.y / self.scale, r.width / self.scale, r.height / self.scale)
+    }
+
+    /// Physical, root-relative rect for a spec: its global logical rect
+    /// times the scale.
     fn surface_rect(&self, spec: &SurfaceSpec) -> Result<(i32, i32, u32, u32)> {
         let monitor = self.monitor(spec.monitor)?;
         let r = match spec.kind {
@@ -314,11 +324,12 @@ impl X11Platform {
                 Rect::new(area.x + (area.width - size.width) / 2.0, area.y + (area.height - size.height) / 2.0, size.width, size.height)
             }
         };
+        let s = self.scale;
         Ok((
-            r.x.round() as i32,
-            r.y.round() as i32,
-            r.width.round().max(1.0) as u32,
-            r.height.round().max(1.0) as u32,
+            (r.x * s).round() as i32,
+            (r.y * s).round() as i32,
+            (r.width * s).round().max(1.0) as u32,
+            (r.height * s).round().max(1.0) as u32,
         ))
     }
 
@@ -538,6 +549,24 @@ impl X11Platform {
     }
 }
 
+/// The screen's scale: `SIDEBAR_SCALE` if set, else `Xft.dpi` from the
+/// X resources (which GNOME, KDE and others set to 96 × their scale) over
+/// 96, in steps of 0.25 between 1 and 4.
+fn screen_scale(conn: &RustConnection, root: Window) -> f32 {
+    let from_env = std::env::var("SIDEBAR_SCALE").ok().and_then(|v| v.trim().parse::<f32>().ok());
+    let from_dpi = || {
+        let reply = conn.get_property(false, root, AtomEnum::RESOURCE_MANAGER, AtomEnum::STRING, 0, 1 << 16).ok()?.reply().ok()?;
+        xft_dpi(&String::from_utf8_lossy(&reply.value)).map(|dpi| dpi / 96.0)
+    };
+    let scale = from_env.or_else(from_dpi).unwrap_or(1.0);
+    ((scale * 4.0).round() / 4.0).clamp(1.0, 4.0)
+}
+
+/// `Xft.dpi` from an X resource database string.
+fn xft_dpi(resources: &str) -> Option<f32> {
+    resources.lines().find_map(|l| l.strip_prefix("Xft.dpi:")).and_then(|v| v.trim().parse().ok())
+}
+
 fn has_compositor(conn: &RustConnection, screen_num: usize) -> Result<bool> {
     let name = format!("_NET_WM_CM_S{screen_num}");
     let atom = conn.intern_atom(false, name.as_bytes()).map_err(be)?.reply().map_err(be)?.atom;
@@ -590,7 +619,7 @@ fn to_x11_pixels(pixmap: &Pixmap, argb: bool, lsb_first: bool) -> Vec<u8> {
     let mut out = vec![0; pixmap.data.len()];
     pixmap.write_bgra(&mut out, alpha);
     if !lsb_first {
-        out.chunks_exact_mut(4).for_each(<[u8]>::reverse);
+        out.as_chunks_mut::<4>().0.iter_mut().for_each(|px| px.reverse());
     }
     out
 }
@@ -711,6 +740,12 @@ impl Platform for X11Platform {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_xft_dpi() {
+        assert_eq!(xft_dpi("Xft.antialias:\t1\nXft.dpi:\t192\nXft.hinting:\t1\n"), Some(192.0));
+        assert_eq!(xft_dpi("*background:\tblack\n"), None);
+    }
 
     #[test]
     fn strut_right_dock() {

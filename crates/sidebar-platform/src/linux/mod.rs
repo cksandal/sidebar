@@ -8,6 +8,8 @@ use crate::{Platform, PlatformError, Result};
 
 #[cfg(feature = "wayland")]
 pub mod wayland;
+#[cfg(feature = "wayland")]
+mod xkb;
 #[cfg(feature = "x11")]
 pub mod x11;
 

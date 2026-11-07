@@ -143,9 +143,20 @@ always on top.
 Only the settings window takes keyboard input. The X11 backend maps key
 codes with the core keyboard mapping (Shift and Caps Lock columns), which
 covers Latin text. The Windows backend takes text from `WM_CHAR`, so any
-keyboard layout and input method works. The Wayland backend has no keyboard support yet (it would
-need xkbcommon), so on Wayland the settings button opens the config file in
-the default editor instead.
+keyboard layout and input method works. The Wayland backend compiles the
+compositor's keymap with libxkbcommon, loaded at run time like NVML (see
+`linux/xkb.rs`), and repeats held keys itself, as Wayland clients must;
+dead keys and compose sequences aren't handled. If a backend can't open a
+window, the settings button opens the config file in the default editor
+instead.
+
+### Scaling
+
+Everything above the platform works in logical pixels; backends convert.
+Windows uses each monitor's DPI (per-monitor v2). Wayland renders at the
+compositor's preferred fractional scale and shows the buffer at logical
+size through a viewport, falling back to the integer buffer scale. X11 has
+one scale for the whole screen, from `Xft.dpi` or `SIDEBAR_SCALE`.
 
 ## Saved state
 

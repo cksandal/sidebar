@@ -64,6 +64,8 @@ fn api() -> Option<&'static Api> {
     API.get_or_init(load).as_ref()
 }
 
+// The transmutes' targets are the declared types of the bindings.
+#[allow(clippy::missing_transmute_annotations)]
 fn load() -> Option<Api> {
     // SAFETY: each symbol is cast to the signature documented in nvml.h
     // for that versioned name; nvmlInit_v2 is called before any other

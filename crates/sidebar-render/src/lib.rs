@@ -98,7 +98,7 @@ impl Pixmap {
     /// common format of wl_shm, X11 ZPixmap, and Windows DIBs) into `out`,
     /// which must be `width * height * 4` bytes.
     pub fn write_bgra(&self, out: &mut [u8], alpha: AlphaMode) {
-        for (src, dst) in self.data.chunks_exact(4).zip(out.chunks_exact_mut(4)) {
+        for (src, dst) in self.data.as_chunks::<4>().0.iter().zip(out.as_chunks_mut::<4>().0) {
             let [r, g, b, a] = [src[0], src[1], src[2], src[3]].map(u32::from);
             let (r, g, b, a) = match alpha {
                 AlphaMode::Premultiplied => (r * a / 255, g * a / 255, b * a / 255, a),
@@ -112,7 +112,7 @@ impl Pixmap {
     pub fn write_ppm(&self, path: &Path) -> io::Result<()> {
         let mut out = io::BufWriter::new(std::fs::File::create(path)?);
         write!(out, "P6\n{} {}\n255\n", self.width, self.height)?;
-        for px in self.data.chunks_exact(4) {
+        for px in self.data.as_chunks::<4>().0 {
             out.write_all(&px[..3])?;
         }
         out.flush()
@@ -178,7 +178,7 @@ mod tests {
         let mut scene = Scene::new(Size::new(80.0, 24.0));
         scene.text(sidebar_core::Point::new(2.0, 2.0), "Hello", 16.0, Color::WHITE);
         let pm = rasterize(&scene, 1.0);
-        assert!(pm.data.chunks_exact(4).any(|px| px[3] > 128), "glyphs drew pixels");
+        assert!(pm.data.as_chunks::<4>().0.iter().any(|px| px[3] > 128), "glyphs drew pixels");
     }
 
     #[test]

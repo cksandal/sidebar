@@ -345,7 +345,7 @@ impl ConfigFile {
             }
             c.theme.background.a = alpha_of(percent);
         }
-        if !(c.thickness >= 16.0) {
+        if c.thickness.is_nan() || c.thickness < 16.0 {
             return Err(format!("dock.thickness: must be at least 16, got {}", c.thickness));
         }
         Ok(c)

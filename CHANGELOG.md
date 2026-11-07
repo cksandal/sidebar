@@ -30,6 +30,9 @@ First public release.
   left out.
 - The config file is reloaded automatically when it changes and is
   valid.
+- Wayland: the settings window (an xdg toplevel, with keyboard input
+  through libxkbcommon loaded at run time) and sharp fractional scaling.
+- X11: HiDPI scaling from `Xft.dpi`, or `SIDEBAR_SCALE`.
 - Docks whose widgets don't fit scroll with the mouse wheel, and stay
   clear of the Windows taskbar.
 - Windows: no console window; messages go to the terminal it was started
