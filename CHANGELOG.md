@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- CPU widget: the per-core bars collapse under a **Cores** title on CPUs
+  without P- and E-cores too, as they do on hybrid CPUs.
+
 ## 0.1.0 (2026-11-07)
 
 First public release.

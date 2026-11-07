@@ -113,8 +113,9 @@ ran the command with, so run it again if you move or reinstall it.
   its inner side shows where you are.
 - **Calendar:** click ‹ or › to change month, and click the month name to
   return to today.
-- **CPU widget:** on CPUs with performance and efficiency cores, click
-  **P-cores** or **E-cores** to show or hide the per-core bars.
+- **CPU widget:** the per-core bars start hidden; click **Cores** to show
+  or hide them. On CPUs with performance and efficiency cores they are
+  split under **P-cores** and **E-cores**, each toggled on its own.
 
 ### Settings window
 

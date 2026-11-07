@@ -12,17 +12,18 @@ const ONE_COLUMN_MAX: usize = 8;
 
 /// Cores shown together: all of them, or one core type on hybrid CPUs.
 struct Block {
-    /// "P-cores" / "E-cores"; `None` when there is a single block.
-    name: Option<String>,
+    /// "P-cores" / "E-cores", or "Cores" when there is a single block.
+    name: String,
     cores: Vec<usize>,
-    /// Whether the core rows are shown; named blocks start collapsed and
-    /// toggle when their title is clicked.
+    /// Whether the core rows are shown; blocks start collapsed and toggle
+    /// when their title is clicked.
     expanded: bool,
 }
 
 /// CPU load, clock and model; optionally RAM and swap use; a bar per core,
-/// in blocks by core type on hybrid CPUs (P-cores, E-cores; collapsed to
-/// their title and average until clicked); a chart of
+/// in blocks by core type on hybrid CPUs (P-cores, E-cores) or one "Cores"
+/// block otherwise, collapsed to their title and average until clicked; a
+/// chart of
 /// every core's recent load; and a chart of the package temperature. Falls
 /// back to a header and the load chart when there is not enough room
 /// (horizontal docks).
@@ -43,9 +44,9 @@ pub struct CpuGraph {
 impl CpuGraph {
     pub fn new(source: Box<dyn Source<CpuSample>>, info: CpuInfo) -> Self {
         let blocks = if info.groups.len() > 1 {
-            info.groups.into_iter().map(|g| Block { name: Some(g.name), cores: g.cores, expanded: false }).collect()
+            info.groups.into_iter().map(|g| Block { name: g.name, cores: g.cores, expanded: false }).collect()
         } else {
-            vec![Block { name: None, cores: (0..info.cores).collect(), expanded: true }]
+            vec![Block { name: "Cores".into(), cores: (0..info.cores).collect(), expanded: false }]
         };
         Self {
             source,
@@ -82,9 +83,8 @@ impl CpuGraph {
     }
 
     fn block_height(&self, block: &Block) -> f32 {
-        let title = if block.name.is_some() { meter::title_height() } else { 0.0 };
         let rows = if block.expanded { self.rows(block) as f32 * meter::row_height() } else { 0.0 };
-        title + rows
+        meter::title_height() + rows
     }
 
     /// Top of the first block, for a widget drawn in `bounds`; must match
@@ -93,14 +93,14 @@ impl CpuGraph {
         bounds.y + CARD_PAD + line_height(crate::HEADER_SIZE) + GAP + meter::details_height(2) + self.memory_height()
     }
 
-    /// The block whose title is at `pos`, if it can be toggled.
+    /// The block whose title is at `pos`.
     fn title_at(&self, bounds: Rect, pos: Point) -> Option<usize> {
         if bounds.height + 0.5 < self.full_height() || !bounds.contains(pos) {
             return None;
         }
         let mut y = self.blocks_top(bounds);
         for (i, block) in self.blocks.iter().enumerate() {
-            if block.name.is_some() && (y..y + meter::title_height()).contains(&pos.y) {
+            if (y..y + meter::title_height()).contains(&pos.y) {
                 return Some(i);
             }
             y += self.block_height(block) + SECTION_GAP;
@@ -139,16 +139,14 @@ impl CpuGraph {
         }
     }
 
-    /// Title line with the block's average load (hybrid CPUs), core rows.
+    /// Title line with the block's average load, then its core rows if
+    /// expanded.
     fn draw_block(&self, ctx: &mut DrawCtx<'_>, block: &Block, area: Rect) {
-        let mut y = area.y;
-        if let Some(name) = &block.name {
-            let value = meter::percent(self.history.back().map(|s| average(s, &block.cores)));
-            let marker = if block.expanded { "▾" } else { "▸" };
-            y = meter::title(ctx, area, &format!("{marker} {name}"), value, ctx.theme.foreground);
-            if !block.expanded {
-                return;
-            }
+        let value = meter::percent(self.history.back().map(|s| average(s, &block.cores)));
+        let marker = if block.expanded { "▾" } else { "▸" };
+        let y = meter::title(ctx, area, &format!("{marker} {}", block.name), value, ctx.theme.foreground);
+        if !block.expanded {
+            return;
         }
         let columns = self.columns();
         let rows = self.rows(block);
@@ -314,14 +312,20 @@ mod tests {
     fn samples_once_per_interval_and_lists_cores() {
         let mut samples = [sample(0.25, &[0.5, 0.0]), sample(0.5, &[1.0, 0.0])].into_iter();
         let mut cpu = CpuGraph::new(Box::new(move || samples.next()), info(2));
+        // Collapsed until its title is clicked.
+        assert_eq!(drawn_text(&cpu, 148.0, cpu.full_height()), ["CPU", "n/a", "Clock n/a", "Intel Core i7-2670QM…", "▸ Cores", "-", "Load", "-"]);
+        cpu.blocks[0].expanded = true;
         let h = cpu.full_height();
-        assert_eq!(drawn_text(&cpu, 148.0, h), ["CPU", "n/a", "Clock n/a", "Intel Core i7-2670QM…", "Core 1", "-", "Core 2", "-", "Load", "-"]);
+        assert_eq!(
+            drawn_text(&cpu, 148.0, h),
+            ["CPU", "n/a", "Clock n/a", "Intel Core i7-2670QM…", "▾ Cores", "-", "Core 1", "-", "Core 2", "-", "Load", "-"]
+        );
 
         let t0 = SystemTime::UNIX_EPOCH;
         assert!(cpu.update(&UpdateCtx { now: t0 }));
         assert!(!cpu.update(&UpdateCtx { now: t0 + Duration::from_millis(250) }));
         assert!(cpu.update(&UpdateCtx { now: t0 + Duration::from_secs(1) }));
-        assert_eq!(drawn_text(&cpu, 148.0, h)[..6], ["CPU", "50%", "Clock 2201 MHz", "Intel Core i7-2670QM…", "Core 1", "100%"]);
+        assert_eq!(drawn_text(&cpu, 148.0, h)[..8], ["CPU", "50%", "Clock 2201 MHz", "Intel Core i7-2670QM…", "▾ Cores", "50%", "Core 1", "100%"]);
 
         // Total load is drawn as a filled area, one column per sample.
         let area = rects_in(&cpu, 148.0, h, area_color(Theme::default().accent));
@@ -419,6 +423,18 @@ mod tests {
     }
 
     #[test]
+    fn cpus_without_core_types_toggle_too() {
+        let mut cpu = CpuGraph::new(Box::new(|| None), info(4));
+        let collapsed = cpu.full_height();
+        let title = text_origin(&cpu, at(&cpu), "▸ Cores") + Point::new(4.0, 4.0);
+        assert!(click(&mut cpu, title));
+        assert!(cpu.blocks[0].expanded);
+        assert!(cpu.full_height() > collapsed);
+        assert!(click(&mut cpu, title));
+        assert_eq!(cpu.full_height(), collapsed);
+    }
+
+    #[test]
     fn dragging_from_a_title_does_not_toggle() {
         let mut cpu = hybrid(false);
         let bounds = Rect::new(0.0, 0.0, 148.0, cpu.full_height());
@@ -442,7 +458,7 @@ mod tests {
         cpu.update(&UpdateCtx { now: t0 });
         cpu.update(&UpdateCtx { now: t0 + Duration::from_secs(1) });
         let h = cpu.full_height();
-        assert_eq!(drawn_text(&cpu, 148.0, h)[8..], ["Load", "20%", "Temp", "90°C"]);
+        assert_eq!(drawn_text(&cpu, 148.0, h)[4..], ["▸ Cores", "20%", "Load", "20%", "Temp", "90°C"]);
         // Each sample is colored by its temperature.
         let cool = rects_in(&cpu, 148.0, h, temp_color(45.0).with_alpha(50));
         let hot = rects_in(&cpu, 148.0, h, temp_color(90.0).with_alpha(50));
@@ -480,10 +496,11 @@ mod tests {
     #[test]
     fn many_cores_use_two_columns() {
         let one = CpuGraph::new(Box::new(|| None), info(8));
-        let two = CpuGraph::new(Box::new(|| None), info(16));
+        let mut two = CpuGraph::new(Box::new(|| None), info(16));
         assert_eq!(one.rows(&one.blocks[0]), 8);
         assert_eq!(two.rows(&two.blocks[0]), 8);
-        assert_eq!(drawn_text(&two, 148.0, two.full_height())[4..6], ["1", "-"]);
+        two.blocks[0].expanded = true;
+        assert_eq!(drawn_text(&two, 148.0, two.full_height())[4..8], ["▾ Cores", "-", "1", "-"]);
     }
 
     #[test]
