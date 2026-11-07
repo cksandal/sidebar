@@ -136,7 +136,8 @@ ran the command with, so run it again if you move or reinstall it.
   sidebar.
 - **Keyboard:**
   - **↑**/**↓** select a widget.
-  - **Space** ticks or unticks it.
+  - **Space** ticks or unticks it, except for widgets with a text field
+    (weather, stocks, network, label), where typing goes into the field.
   - Typing edits the selected widget's text field.
   - **Enter** saves, and **Esc** closes the window.
 
